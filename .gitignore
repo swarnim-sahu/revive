@@ -1,28 +1,41 @@
-# Python
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
 
-# Test / coverage
+# Pytest / Coverage
 .pytest_cache/
 .coverage
 htmlcov/
+.nox/
+.tox/
 
-# Virtual environments
+# Environments
 .venv/
 venv/
+ENV/
 env/
 
-# Environment / secrets
+# Environment variables & secrets
 .env
 .env.*
+!.env.example
 
-# IDE
+# IDEs and Editors
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
 
-# OS
+# Operating System files
 .DS_Store
 Thumbs.db
 
+# REVIVE Phase 2 & 3 Generated/Processed Data
 data/generated/
+data/processed/
+
+# REVIVE Phase 3 Risk Models
+models/risk/
+models/risk/*.joblib
