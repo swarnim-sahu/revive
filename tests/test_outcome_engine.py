@@ -1,10 +1,10 @@
 """
 Unit and Integration Test Suite for Revive Phase 7 Outcome Measurement & Revenue Attribution Engine.
-Tests temporal isolation, pre-existing outcome protection, canonical resolution, attribution levels,
-revenue accounting, idempotency, determinism, lineage completeness, and ground-truth isolation.
+Tests temporal isolation, microsecond boundaries, pre-existing outcome protection, canonical resolution,
+attribution levels, revenue accounting, idempotency, determinism, lineage completeness, and ground-truth isolation.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 import pytest
 
@@ -16,6 +16,7 @@ from app.execution.schemas import ExecutionAuditRecord, ExecutionStatus
 from app.outcome.config import DEFAULT_OUTCOME_CONFIG, OutcomeConfig
 from app.outcome.engine import OutcomeEngine
 from app.outcome.evaluation import OutcomeEvaluator
+from app.outcome.observer import EventObserver, parse_iso_timestamp
 from app.outcome.schemas import AttributionMethod, AttributionStatus, OutcomeRecord, OutcomeType
 
 
@@ -92,7 +93,6 @@ def create_event(evt_type: EventType, customer_id: str, ts_str: str, payload: di
 
 def test_successful_payment_recovery_outcome(execution_record, base_intervention_decision, sample_plan):
     engine = OutcomeEngine()
-    # Event occurs AFTER execution timestamp (2026-08-05T14:00:00+00:00 > 12:00:00)
     post_event = create_event(
         EventType.PAYMENT_SUCCEEDED,
         "cus_out_test_001",
@@ -149,7 +149,7 @@ def test_temporally_associated_product_guidance_outcome(base_intervention_decisi
     assert record.attribution_status == AttributionStatus.TEMPORALLY_ASSOCIATED
     assert record.attribution_method == AttributionMethod.TEMPORAL_WINDOW_ASSOCIATION
     assert record.gross_observed_revenue == Decimal("999.00")
-    assert record.attributable_revenue == Decimal("499.50")  # 50% fraction
+    assert record.attributable_revenue == Decimal("499.50")
     assert record.intervention_cost == Decimal("0.00")
     assert record.net_recovered_revenue == Decimal("499.50")
 
@@ -171,11 +171,10 @@ def test_pre_existing_conversion_not_attributed(execution_record, base_intervent
     assert record.outcome == OutcomeType.ALREADY_CONVERTED
     assert record.attribution_status == AttributionStatus.UNATTRIBUTED
     assert record.attributable_revenue == Decimal("0.00")
-    assert record.net_recovered_revenue == Decimal("-3.00")  # 0.00 - cost(3.00)
+    assert record.net_recovered_revenue == Decimal("-3.00")  # 0.00 - cost(3.00) <= 0
 
 
 def test_event_outside_observation_window_ignored(execution_record, base_intervention_decision, sample_plan):
-    # Event occurs AFTER observation window (2026-08-15T12:00:00 > 7 days = 2026-08-12T12:00:00)
     late_event = create_event(
         EventType.PAYMENT_SUCCEEDED,
         "cus_out_test_001",
@@ -198,7 +197,80 @@ def test_event_outside_observation_window_ignored(execution_record, base_interve
     assert record.attributable_revenue == Decimal("0.00")
 
 
-# --- 3. NON-RECOVERY & FAILURE OUTCOMES ---
+# --- 3. MICROSECOND BOUNDARY CONDITION REGRESSION TESTS ---
+
+def test_microsecond_boundary_conditions(execution_record, base_intervention_decision, sample_plan):
+    engine = OutcomeEngine()
+    exec_dt = parse_iso_timestamp(execution_record.execution_timestamp)
+    window_hours = 168.0
+    end_dt = exec_dt + timedelta(hours=window_hours)
+
+    # 1. Event exactly AT execution timestamp -> pre-existing (ALREADY_CONVERTED)
+    evt_at_exec = BaseEvent(
+        event_id="evt_at_exec",
+        event_type=EventType.PAYMENT_SUCCEEDED,
+        merchant_id="merch_codecraft",
+        customer_id="cus_out_test_001",
+        timestamp=exec_dt,
+        source="test",
+        payload={"amount": 999.00},
+    )
+    r_at_exec = engine.measure_outcome(execution_record, base_intervention_decision, [evt_at_exec], plan=sample_plan)
+    assert r_at_exec.outcome == OutcomeType.ALREADY_CONVERTED
+    assert r_at_exec.attribution_status == AttributionStatus.UNATTRIBUTED
+    assert r_at_exec.attributable_revenue == Decimal("0.00")
+
+    # 2. Event 1 microsecond AFTER execution timestamp -> eligible post-execution (RECOVERED)
+    evt_after_exec = BaseEvent(
+        event_id="evt_after_exec",
+        event_type=EventType.PAYMENT_SUCCEEDED,
+        merchant_id="merch_codecraft",
+        customer_id="cus_out_test_001",
+        timestamp=exec_dt + timedelta(microseconds=1),
+        source="test",
+        payload={"amount": 999.00},
+    )
+    e_new = OutcomeEngine()
+    r_after_exec = e_new.measure_outcome(execution_record, base_intervention_decision, [evt_after_exec], plan=sample_plan)
+    assert r_after_exec.outcome == OutcomeType.RECOVERED
+
+    # 3. Event exactly AT observation end -> eligible post-execution (RECOVERED)
+    evt_at_end = BaseEvent(
+        event_id="evt_at_end",
+        event_type=EventType.PAYMENT_SUCCEEDED,
+        merchant_id="merch_codecraft",
+        customer_id="cus_out_test_001",
+        timestamp=end_dt,
+        source="test",
+        payload={"amount": 999.00},
+    )
+    e_end = OutcomeEngine()
+    r_at_end = e_end.measure_outcome(execution_record, base_intervention_decision, [evt_at_end], plan=sample_plan)
+    assert r_at_end.outcome == OutcomeType.RECOVERED
+
+    # 4. Event 1 microsecond AFTER observation end -> excluded (NOT_RECOVERED)
+    evt_past_end = BaseEvent(
+        event_id="evt_past_end",
+        event_type=EventType.PAYMENT_SUCCEEDED,
+        merchant_id="merch_codecraft",
+        customer_id="cus_out_test_001",
+        timestamp=end_dt + timedelta(microseconds=1),
+        source="test",
+        payload={"amount": 999.00},
+    )
+    e_past = OutcomeEngine()
+    r_past_end = e_past.measure_outcome(
+        execution_record,
+        base_intervention_decision,
+        [evt_past_end],
+        plan=sample_plan,
+        measurement_timestamp=(end_dt + timedelta(days=1)).isoformat(),
+    )
+    assert r_past_end.outcome == OutcomeType.NOT_RECOVERED
+    assert r_past_end.attributable_revenue == Decimal("0.00")
+
+
+# --- 4. NON-RECOVERY & FAILURE OUTCOMES ---
 
 def test_trial_expired_outcome(execution_record, base_intervention_decision, sample_plan):
     expired_event = create_event(
@@ -245,7 +317,7 @@ def test_not_recovered_when_window_closed(execution_record, base_intervention_de
     assert record.attribution_status == AttributionStatus.UNATTRIBUTED
 
 
-def test_no_action_baseline(base_intervention_decision, sample_plan):
+def test_no_action_baseline_not_attributed(base_intervention_decision, sample_plan):
     decision = base_intervention_decision.model_copy(
         update={"selected_action": InterventionAction.NO_ACTION}
     )
@@ -272,9 +344,36 @@ def test_no_action_baseline(base_intervention_decision, sample_plan):
     assert record.outcome == OutcomeType.CONVERTED
     assert record.attribution_status == AttributionStatus.UNATTRIBUTED
     assert record.attributable_revenue == Decimal("0.00")
+    assert record.net_recovered_revenue == Decimal("0.00")
 
 
-# --- 4. IDEMPOTENCY & DETERMINISM TESTS ---
+def test_blocked_or_escalated_execution_not_attributed(base_intervention_decision, sample_plan):
+    exec_rec = ExecutionAuditRecord(
+        execution_id="exec_cus_out_test_001_2026-08-05T12:00:00+00:00_att1",
+        decision_id="dec_cus_out_test_001_2026-08-05T12:00:00+00:00",
+        customer_id="cus_out_test_001",
+        merchant_id="merch_codecraft",
+        execution_timestamp="2026-08-05T12:00:00+00:00",
+        action=InterventionAction.HUMAN_REVIEW,
+        status=ExecutionStatus.ESCALATED,
+        attempt_number=1,
+    )
+    post_event = create_event(
+        EventType.PAYMENT_SUCCEEDED,
+        "cus_out_test_001",
+        "2026-08-06T12:00:00+00:00",
+        {"amount": 999.00},
+    )
+
+    engine = OutcomeEngine()
+    record = engine.measure_outcome(exec_rec, base_intervention_decision, [post_event], plan=sample_plan)
+
+    assert record.outcome == OutcomeType.CONVERTED
+    assert record.attribution_status == AttributionStatus.UNATTRIBUTED
+    assert record.attributable_revenue == Decimal("0.00")
+
+
+# --- 5. IDEMPOTENCY & DETERMINISM TESTS ---
 
 def test_idempotency_same_input_returns_same_record(execution_record, base_intervention_decision, sample_plan):
     post_event = create_event(
@@ -310,7 +409,7 @@ def test_deterministic_repeated_engine_resolution(execution_record, base_interve
     assert r1.model_dump_json() == r2.model_dump_json()
 
 
-# --- 5. OBSERVATION WINDOW BOUNDARY CONFIGURATION TESTS ---
+# --- 6. OBSERVATION WINDOW BOUNDARY CONFIGURATION TESTS ---
 
 def test_configurable_observation_windows(execution_record, base_intervention_decision, sample_plan):
     post_event = create_event(
@@ -345,7 +444,7 @@ def test_configurable_observation_windows(execution_record, base_intervention_de
     assert rec_72.outcome == OutcomeType.RECOVERED
 
 
-# --- 6. EVALUATOR METRICS & LEAKAGE TESTS ---
+# --- 7. EVALUATOR METRICS & LEAKAGE TESTS ---
 
 def test_evaluator_metrics_and_leakage(execution_record, base_intervention_decision, sample_plan):
     post_event = create_event(

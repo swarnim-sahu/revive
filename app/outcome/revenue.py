@@ -33,14 +33,20 @@ class RevenueCalculator:
         """
         revenue_at_risk = Decimal(str(decision.revenue_at_risk))
 
-        # 1. Gross Observed Revenue
+        # 1. Gross Observed Revenue (Historical/pre-existing or post-intervention observed revenue)
         if outcome in {OutcomeType.RECOVERED, OutcomeType.CONVERTED, OutcomeType.ALREADY_CONVERTED}:
-            gross_observed = cls._extract_observed_revenue(evidence_events, plan, revenue_at_risk)
+            gross_observed = cls._extract_observed_revenue(evidence_events, plan, Decimal("0.00"))
         else:
             gross_observed = Decimal("0.00")
 
         # 2. Attributable Revenue based on Attribution Status
-        if attribution_status in {AttributionStatus.DIRECTLY_OBSERVED, AttributionStatus.ATTRIBUTION_SUPPORTED}:
+        # ALREADY_CONVERTED, UNATTRIBUTED, and ATTRIBUTION_UNCERTAIN MUST BE Decimal("0.00")
+        if outcome == OutcomeType.ALREADY_CONVERTED or attribution_status in {
+            AttributionStatus.UNATTRIBUTED,
+            AttributionStatus.ATTRIBUTION_UNCERTAIN,
+        }:
+            attributable = Decimal("0.00")
+        elif attribution_status in {AttributionStatus.DIRECTLY_OBSERVED, AttributionStatus.ATTRIBUTION_SUPPORTED}:
             attributable = gross_observed
         elif attribution_status == AttributionStatus.TEMPORALLY_ASSOCIATED:
             multiplier = Decimal(str(config.temporally_associated_attribution_fraction))
