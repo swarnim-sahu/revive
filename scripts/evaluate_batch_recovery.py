@@ -2,7 +2,7 @@
 REVIVE Phase 9 — Batch Recovery Evaluation & Evidence Script.
 Executes deterministic batch evaluation across synthetic customer journeys.
 Prints formatted aggregate metrics, risk distribution, policy actions, EV recovery rates,
-and optional JSON execution output.
+Phase 7 measured recovery, and optional JSON execution output.
 
 Usage:
     py scripts/evaluate_batch_recovery.py --customers 100 --seed 42
@@ -26,6 +26,8 @@ def print_cli_report(res: dict) -> None:
     diag_dist = res["diagnosis_distribution"]
     ai_dist = res["ai_status_distribution"]
     act_dist = res["action_distribution"]
+    outcome_dist = res.get("outcome_distribution", {})
+    attr_dist = res.get("attribution_distribution", {})
 
     print("=" * 60)
     print("REVIVE — BATCH RECOVERY EVALUATION REPORT")
@@ -71,11 +73,28 @@ def print_cli_report(res: dict) -> None:
     for act, cnt in act_dist.items():
         print(f"{act:26s}: {cnt}")
 
-    print("\nRevenue & Recovery Measurement")
-    print("------------------------------")
+    print("\nEXPECTED RECOVERY (Phase 5 Policy Prediction)")
+    print("----------------------------------------------")
     print(f"Total revenue at risk:     INR {agg.get('total_revenue_at_risk', 0.0):.2f}")
     print(f"Total expected recovery:   INR {agg.get('total_expected_recovery_value', 0.0):.2f}")
     print(f"Expected recovery rate:    {agg.get('expected_recovery_rate_pct', 0.0):.2f}%")
+
+    print("\nMEASURED RECOVERY (Phase 7 Realized & Attributed)")
+    print("-------------------------------------------------")
+    print(f"Gross observed revenue:    INR {agg.get('total_gross_observed_revenue', 0.0):.2f}")
+    print(f"Attributable revenue:      INR {agg.get('total_attributable_revenue', 0.0):.2f}")
+    print(f"Intervention cost:         INR {agg.get('total_intervention_cost', 0.0):.2f}")
+    print(f"Net recovered revenue:     INR {agg.get('total_net_recovered_revenue', 0.0):.2f}")
+    print(f"Measured recovery rate:    {agg.get('measured_recovery_rate_pct', 0.0):.2f}%")
+    print(f"Recovered customers:       {agg.get('recovered_customer_count', 0)}")
+
+    print("\nOutcome Distribution:")
+    for out, cnt in outcome_dist.items():
+        print(f"  - {out:23s}: {cnt}")
+
+    print("\nAttribution Distribution:")
+    for attr, cnt in attr_dist.items():
+        print(f"  - {attr:23s}: {cnt}")
 
     print("\nExecution Engine (Mock Razorpay Dispatch)")
     print("-----------------------------------------")
@@ -98,7 +117,11 @@ def main() -> None:
     parser.add_argument("--output", type=str, default=None, help="Optional JSON file output path")
     args = parser.parse_args()
 
-    evaluator = BatchRecoveryEvaluator(customers_count=args.customers, seed=args.seed, snapshot_hours=args.snapshot_hours)
+    evaluator = BatchRecoveryEvaluator(
+        customers_count=args.customers,
+        seed=args.seed,
+        snapshot_hours=args.snapshot_hours,
+    )
     result = evaluator.evaluate()
     res_dict = result.to_dict()
 
@@ -109,7 +132,7 @@ def main() -> None:
         out_path.parent.mkdir(parents=True, exist_ok=True)
         with open(out_path, "w", encoding="utf-8") as f:
             json.dump(res_dict, f, indent=2)
-        print(f"\n[OK] Batch evaluation results saved to '{args.output}'")
+        print(f"\n[OK] Wrote batch evaluation report to '{out_path}'")
 
 
 if __name__ == "__main__":

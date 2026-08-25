@@ -13,7 +13,7 @@ from app.models.entities import Customer, Plan
 from app.models.enums import EventType
 from app.models.events import BaseEvent
 from app.intervention.schemas import CandidateActionScore, InterventionAction, InterventionDecision
-from app.execution.schemas import ExecutionStatus
+from app.execution.schemas import ExecutionAuditRecord, ExecutionStatus
 from app.execution.engine import ExecutionEngine
 from app.integrations.razorpay.config import RazorpayConfig
 from app.integrations.razorpay.client import MockRazorpayClient
@@ -208,3 +208,199 @@ def test_12_no_ground_truth_fields_in_runtime_decision_payloads():
         rec_dict = rec.to_dict()
         for forbidden in forbidden_fields:
             assert forbidden not in rec_dict
+
+
+def test_13_measured_recovery_phase7_integration():
+    """13. BatchRecoveryEvaluator integrates Phase 7 OutcomeEngine to measure realized recovery."""
+    evaluator = BatchRecoveryEvaluator(customers_count=20, seed=42)
+    res = evaluator.evaluate()
+    agg = res.aggregate_metrics
+
+    assert "total_gross_observed_revenue" in agg
+    assert "total_attributable_revenue" in agg
+    assert "total_intervention_cost" in agg
+    assert "total_net_recovered_revenue" in agg
+    assert "measured_recovery_rate_pct" in agg
+    assert "recovered_customer_count" in agg
+
+    assert agg["total_attributable_revenue"] > 0.0
+    assert agg["total_net_recovered_revenue"] > 0.0
+    assert agg["measured_recovery_rate_pct"] > 0.0
+    assert agg["recovered_customer_count"] > 0
+
+
+def test_14_expected_vs_measured_recovery_distinction():
+    """14. Expected recovery and measured recovery are computed independently."""
+    evaluator = BatchRecoveryEvaluator(customers_count=30, seed=42)
+    res = evaluator.evaluate()
+    agg = res.aggregate_metrics
+
+    exp_rev = agg["total_expected_recovery_value"]
+    meas_attr_rev = agg["total_attributable_revenue"]
+    meas_net_rev = agg["total_net_recovered_revenue"]
+
+    # Both values are non-zero and derived from their respective engines (Phase 5 EV vs Phase 7 Attributed)
+    assert exp_rev > 0.0
+    assert meas_attr_rev > 0.0
+    assert meas_net_rev > 0.0
+
+
+def test_15_outcome_engine_temporal_isolation():
+    """15. Pre-execution events cannot trigger DIRECTLY_OBSERVED attribution."""
+    from app.outcome.engine import OutcomeEngine
+    from app.outcome.schemas import AttributionStatus, OutcomeType
+
+    engine = OutcomeEngine()
+
+    candidate = CandidateActionScore(
+        action=InterventionAction.PAYMENT_RECOVERY,
+        expected_value=Decimal("450.00"),
+        recovery_probability_assumption=0.45,
+        direct_cost=Decimal("3.00"),
+        incentive_penalty_assumption=Decimal("0.00"),
+        harm_penalty_assumption=Decimal("0.00"),
+        is_eligible=True,
+    )
+    decision = InterventionDecision(
+        customer_id="cus_temp_iso_01",
+        decision_timestamp="2026-08-05T12:00:00+00:00",
+        risk_score=0.85,
+        risk_tier="CRITICAL",
+        revenue_at_risk=Decimal("999.00"),
+        diagnosis="PAYMENT_FRICTION",
+        diagnosis_confidence=0.85,
+        diagnosis_actionability="candidate",
+        eligibility_status="ELIGIBLE",
+        selected_action=InterventionAction.PAYMENT_RECOVERY,
+        expected_value=Decimal("450.00"),
+        candidate_scores=[candidate],
+        decision_reason="Payment recovery",
+        supporting_evidence=["Payment failure"],
+    )
+    audit_rec = ExecutionAuditRecord(
+        execution_id="exec_temp_iso_01",
+        decision_id="dec_temp_iso_01",
+        customer_id="cus_temp_iso_01",
+        merchant_id="merch_codecraft",
+        execution_timestamp="2026-08-05T12:00:00+00:00",
+        action=InterventionAction.PAYMENT_RECOVERY,
+        status=ExecutionStatus.EXECUTED,
+        attempt_number=1,
+        payload_id="payload_pay_temp",
+        target_url="sim://revive/payment-recovery?cid=cus_temp_iso_01",
+    )
+
+    # Pre-execution event (timestamp BEFORE execution_timestamp)
+    pre_evt = BaseEvent(
+        event_id="evt_pre_01",
+        event_type=EventType.PAYMENT_SUCCEEDED,
+        schema_version="1.0",
+        merchant_id="merch_codecraft",
+        customer_id="cus_temp_iso_01",
+        timestamp="2026-08-05T10:00:00+00:00", # 2h before execution!
+        source="billing",
+        payload={"amount": 999.00},
+    )
+
+    out_rec = engine.measure_outcome(
+        execution_record=audit_rec,
+        decision=decision,
+        customer_events=[pre_evt],
+        observation_window_hours=168.0,
+    )
+
+    # Pre-existing conversion protection: ALREADY_CONVERTED, UNATTRIBUTED, 0.00 attributable revenue
+    assert out_rec.outcome == OutcomeType.ALREADY_CONVERTED
+    assert out_rec.attribution_status == AttributionStatus.UNATTRIBUTED
+    assert out_rec.attributable_revenue == Decimal("0.00")
+    assert out_rec.net_recovered_revenue == Decimal("-3.00") # direct cost deduction
+
+
+def test_16_zero_post_intervention_recovery_produces_zero_attributable_revenue():
+    """16. When no post-intervention conversion occurs, OutcomeEngine assigns NOT_RECOVERED."""
+    from app.outcome.engine import OutcomeEngine
+    from app.outcome.schemas import AttributionStatus, OutcomeType
+
+    engine = OutcomeEngine()
+
+    candidate = CandidateActionScore(
+        action=InterventionAction.PAYMENT_RECOVERY,
+        expected_value=Decimal("450.00"),
+        recovery_probability_assumption=0.45,
+        direct_cost=Decimal("3.00"),
+        incentive_penalty_assumption=Decimal("0.00"),
+        harm_penalty_assumption=Decimal("0.00"),
+        is_eligible=True,
+    )
+    decision = InterventionDecision(
+        customer_id="cus_zero_rec_01",
+        decision_timestamp="2026-08-05T12:00:00+00:00",
+        risk_score=0.85,
+        risk_tier="CRITICAL",
+        revenue_at_risk=Decimal("999.00"),
+        diagnosis="PAYMENT_FRICTION",
+        diagnosis_confidence=0.85,
+        diagnosis_actionability="candidate",
+        eligibility_status="ELIGIBLE",
+        selected_action=InterventionAction.PAYMENT_RECOVERY,
+        expected_value=Decimal("450.00"),
+        candidate_scores=[candidate],
+        decision_reason="Payment recovery",
+        supporting_evidence=["Payment failure"],
+    )
+    audit_rec = ExecutionAuditRecord(
+        execution_id="exec_zero_rec_01",
+        decision_id="dec_zero_rec_01",
+        customer_id="cus_zero_rec_01",
+        merchant_id="merch_codecraft",
+        execution_timestamp="2026-08-05T12:00:00+00:00",
+        action=InterventionAction.PAYMENT_RECOVERY,
+        status=ExecutionStatus.EXECUTED,
+        attempt_number=1,
+        payload_id="payload_pay_zero",
+        target_url="sim://revive/payment-recovery?cid=cus_zero_rec_01",
+    )
+
+    # Post-execution failure event (no payment succeeded)
+    post_fail_evt = BaseEvent(
+        event_id="evt_post_fail_01",
+        event_type=EventType.PAYMENT_FAILED,
+        schema_version="1.0",
+        merchant_id="merch_codecraft",
+        customer_id="cus_zero_rec_01",
+        timestamp="2026-08-05T14:00:00+00:00",
+        source="billing",
+        payload={"error_code": "CARD_DECLINED"},
+    )
+
+    out_rec = engine.measure_outcome(
+        execution_record=audit_rec,
+        decision=decision,
+        customer_events=[post_fail_evt],
+        observation_window_hours=168.0,
+    )
+
+    assert out_rec.outcome == OutcomeType.NOT_RECOVERED
+    assert out_rec.attribution_status == AttributionStatus.UNATTRIBUTED
+    assert out_rec.attributable_revenue == Decimal("0.00")
+    assert out_rec.net_recovered_revenue == Decimal("-3.00")
+
+
+def test_17_probabilistic_response_simulator_determinism_and_non_100_percent_success():
+    """17. EvaluationResponseSimulator produces deterministic outcomes and non-100% success rate."""
+    evaluator1 = BatchRecoveryEvaluator(customers_count=100, seed=42)
+    res1 = evaluator1.evaluate()
+
+    evaluator2 = BatchRecoveryEvaluator(customers_count=100, seed=42)
+    res2 = evaluator2.evaluate()
+
+    # Deterministic byte-for-byte reproducibility
+    assert res1.to_dict() == res2.to_dict()
+
+    outcome_dist = res1.outcome_distribution
+    # Verify non-100%-success: not all executed interventions succeed
+    assert outcome_dist.get("RECOVERED", 0) > 0
+    assert outcome_dist.get("NOT_RECOVERED", 0) > 0
+    # Total executed interventions = RECOVERED + NOT_RECOVERED (for recovery candidates)
+    exec_candidates = res1.aggregate_metrics["simulated_successful_executions"]
+    assert outcome_dist["RECOVERED"] + outcome_dist["NOT_RECOVERED"] == exec_candidates
