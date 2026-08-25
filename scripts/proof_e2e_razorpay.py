@@ -10,7 +10,7 @@ Supports:
 """
 
 import argparse
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 import os
 import sys
@@ -35,7 +35,9 @@ from app.integrations.razorpay.client import MockRazorpayClient, RazorpaySandbox
 from app.integrations.razorpay.dispatcher import RazorpaySandboxDispatcher
 
 
-def build_controlled_payment_failure_customer() -> tuple[Customer, Plan, List[BaseEvent]]:
+def build_controlled_payment_failure_customer(
+    mode: str = "offline",
+) -> tuple[Customer, Plan, List[BaseEvent]]:
     """Construct a canonical controlled customer with a payment failure event."""
     plan = Plan(
         plan_id="pro",
@@ -43,16 +45,24 @@ def build_controlled_payment_failure_customer() -> tuple[Customer, Plan, List[Ba
         price=Decimal("999.00"),
         billing_interval="monthly",
     )
+
+    if mode == "sandbox":
+        # Generate unique timezone-aware UTC base timestamp per sandbox invocation
+        base_time = datetime.now(timezone.utc) - timedelta(days=3)
+    else:
+        # Preserve deterministic fixed base timestamp for offline mode
+        base_time = datetime(2026, 8, 1, 10, 0, 0, tzinfo=timezone.utc)
+
+    t0 = base_time
+    t1 = base_time + timedelta(days=2, hours=4)
+    t2 = base_time + timedelta(days=2, hours=23, minutes=30)
+
     customer = Customer(
         customer_id="cus_e2e_razorpay_001",
         merchant_id="merch_codecraft",
-        created_at=datetime(2026, 8, 1, 10, 0, 0, tzinfo=timezone.utc),
+        created_at=t0,
         plan_id="pro",
     )
-
-    t0 = datetime(2026, 8, 1, 10, 0, 0, tzinfo=timezone.utc)
-    t1 = datetime(2026, 8, 3, 14, 0, 0, tzinfo=timezone.utc)
-    t2 = datetime(2026, 8, 4, 9, 30, 0, tzinfo=timezone.utc)
 
     events = [
         BaseEvent(
@@ -159,7 +169,7 @@ def run_e2e_proof(mode: str = "offline") -> int:
 
     # 2. Input Data Setup
     print("\n--- [STEP 1: CUSTOMER JOURNEY EVENT INGESTION] ---")
-    customer, plan, events = build_controlled_payment_failure_customer()
+    customer, plan, events = build_controlled_payment_failure_customer(mode=mode)
     print(f"Customer ID:  {customer.customer_id}")
     print(f"Plan ID:       {plan.plan_id} (Price: INR {plan.price:.2f})")
     print(f"Event Count:   {len(events)} observable journey events")
