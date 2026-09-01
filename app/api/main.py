@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.dashboard import router as dashboard_router
+from app.api.webhooks import router as webhooks_router
 from app.api.schemas import HealthCheckResponse
 
 app = FastAPI(
@@ -29,6 +30,7 @@ app.add_middleware(
 )
 
 app.include_router(dashboard_router)
+app.include_router(webhooks_router)
 
 
 @app.get("/health", response_model=HealthCheckResponse)

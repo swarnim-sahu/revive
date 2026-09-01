@@ -15,6 +15,15 @@ from app.integrations.razorpay.client import (
     RazorpaySandboxClient,
 )
 from app.integrations.razorpay.dispatcher import RazorpaySandboxDispatcher
+from app.integrations.razorpay.webhook import (
+    RazorpayWebhookHandler,
+    ReviveRuntimeContext,
+    WebhookAuditRecord,
+    WebhookAuditStore,
+    WebhookProcessingStatus,
+    translate_razorpay_event_to_base_event,
+    verify_webhook_signature,
+)
 
 __all__ = [
     "RazorpayConfig",
@@ -26,4 +35,11 @@ __all__ = [
     "MockRazorpayClient",
     "RazorpaySandboxClient",
     "RazorpaySandboxDispatcher",
+    "verify_webhook_signature",
+    "WebhookProcessingStatus",
+    "WebhookAuditRecord",
+    "WebhookAuditStore",
+    "translate_razorpay_event_to_base_event",
+    "RazorpayWebhookHandler",
+    "ReviveRuntimeContext",
 ]
