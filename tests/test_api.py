@@ -98,3 +98,38 @@ def test_7_dashboard_customer_by_id_not_found():
     assert response.status_code == 404
     data = response.json()
     assert "detail" in data
+
+
+def test_8_cors_headers_configured_for_frontend_origins():
+    """8. CORS headers are present for allowed frontend origins (http://localhost:5173 and http://127.0.0.1:5173)."""
+    # Test localhost:5173 origin
+    response_localhost = client.options(
+        "/api/dashboard/summary",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    assert response_localhost.status_code == 200
+    assert response_localhost.headers.get("access-control-allow-origin") == "http://localhost:5173"
+
+    # Test 127.0.0.1:5173 origin
+    response_ip = client.options(
+        "/api/dashboard/summary",
+        headers={
+            "Origin": "http://127.0.0.1:5173",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    assert response_ip.status_code == 200
+    assert response_ip.headers.get("access-control-allow-origin") == "http://127.0.0.1:5173"
+
+    # Test unauthorized origin is rejected (no access-control-allow-origin header)
+    response_unauthorized = client.options(
+        "/api/dashboard/summary",
+        headers={
+            "Origin": "http://unauthorized-domain.com",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    assert response_unauthorized.headers.get("access-control-allow-origin") is None
