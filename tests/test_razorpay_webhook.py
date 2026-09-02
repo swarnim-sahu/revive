@@ -112,14 +112,15 @@ def generate_razorpay_payment_link_paid_payload(
     event_id: str = "event_rzp_test_001",
     payment_id: str = "pay_test_9999",
     amount_paise: int = 99900,
-    created_at_ts: int = 1785938400,  # 2026-08-05T14:00:00+00:00 (2h post-execution)
+    payment_created_at_ts: int = 1785938400,  # 2026-08-05T14:00:00+00:00 (2h post-execution)
+    link_created_at_ts: int = 1785931200,     # 2026-08-05T12:00:00+00:00 (link created at execution time)
 ) -> Dict[str, Any]:
     """Construct authentic Razorpay payment_link.paid webhook payload dictionary."""
     return {
         "entity": "event",
         "account_id": "acc_test_1234",
         "event": "payment_link.paid",
-        "contains": ["payment_link", "payment"],
+        "contains": ["payment_link", "payment", "order"],
         "payload": {
             "payment_link": {
                 "entity": {
@@ -128,6 +129,8 @@ def generate_razorpay_payment_link_paid_payload(
                     "amount": amount_paise,
                     "currency": "INR",
                     "status": "paid",
+                    "created_at": link_created_at_ts,
+                    "updated_at": payment_created_at_ts,
                     "customer": {"name": "cus_wh_test_001", "email": "cus@example.com"},
                 }
             },
@@ -138,11 +141,21 @@ def generate_razorpay_payment_link_paid_payload(
                     "currency": "INR",
                     "status": "captured",
                     "method": "card",
-                    "created_at": created_at_ts,
+                    "created_at": payment_created_at_ts,
+                    "notes": [],
+                }
+            },
+            "order": {
+                "entity": {
+                    "id": f"order_{reference_id}",
+                    "amount": amount_paise,
+                    "currency": "INR",
+                    "status": "paid",
+                    "created_at": link_created_at_ts,
                 }
             },
         },
-        "created_at": created_at_ts,
+        "created_at": link_created_at_ts,
     }
 
 
@@ -778,3 +791,364 @@ def test_pre_existing_conversion_protection(razorpay_config, sample_decision, sa
     assert resp["attribution_status"] == "UNATTRIBUTED"
     assert resp["attributable_revenue"] == 0.0
     assert resp["net_recovered_revenue"] == -3.0
+
+
+def test_real_razorpay_payload_with_empty_notes_list(razorpay_config, sample_decision, sample_plan_pro):
+    """
+    Real Razorpay payloads often have 'notes': [] (empty list) on the payment entity.
+    Verify that dictionary extraction does not raise AttributeError and accurately extracts reference_id.
+    """
+    context = ReviveRuntimeContext(config=razorpay_config)
+    set_runtime_context(context)
+    client = TestClient(app)
+
+    audit_rec = context.execute_decision(sample_decision, plan=sample_plan_pro)
+    event_timestamp = int(datetime.fromisoformat(audit_rec.execution_timestamp).timestamp()) + 60
+
+    real_razorpay_payload = {
+        "entity": "event",
+        "account_id": "acc_LIVE12345678",
+        "event": "payment_link.paid",
+        "contains": ["payment_link", "payment"],
+        "payload": {
+            "payment_link": {
+                "entity": {
+                    "id": "plink_Q7w9xYz1234567",
+                    "accept_partial": False,
+                    "amount": 99900,
+                    "amount_paid": 99900,
+                    "callback_method": "get",
+                    "callback_url": "",
+                    "cancelled_at": 0,
+                    "created_at": event_timestamp,
+                    "currency": "INR",
+                    "customer": {
+                        "email": "test@example.com",
+                        "name": "Live Test Customer",
+                        "contact": "+919876543210"
+                    },
+                    "description": "Payment for Pro Subscription Plan",
+                    "expire_by": 0,
+                    "expired_at": 0,
+                    "first_min_partial_amount": 0,
+                    "notes": {},
+                    "notify": {"sms": False, "email": False, "whatsapp": False},
+                    "reference_id": audit_rec.payload_id,
+                    "reminder_enable": False,
+                    "reminders": [],
+                    "short_url": "https://rzp.io/rzp/ysqUL1hy",
+                    "status": "paid",
+                    "updated_at": event_timestamp,
+                    "upi_link": False,
+                    "user_id": ""
+                }
+            },
+            "payment": {
+                "entity": {
+                    "id": "pay_REALPAY123456",
+                    "entity": "payment",
+                    "amount": 99900,
+                    "currency": "INR",
+                    "status": "captured",
+                    "order_id": None,
+                    "invoice_id": None,
+                    "international": False,
+                    "method": "card",
+                    "amount_refunded": 0,
+                    "refund_status": None,
+                    "captured": True,
+                    "description": "Payment for Pro Subscription Plan",
+                    "card_id": "card_REALCARD123",
+                    "bank": None,
+                    "wallet": None,
+                    "vpa": None,
+                    "email": "test@example.com",
+                    "contact": "+919876543210",
+                    "notes": [],  # Real Razorpay API returns empty list [] for empty notes!
+                    "fee": 2358,
+                    "tax": 358,
+                    "error_code": None,
+                    "error_description": None,
+                    "error_source": None,
+                    "error_step": None,
+                    "error_reason": None,
+                    "acquirer_data": {"auth_code": "123456"},
+                    "created_at": event_timestamp
+                }
+            }
+        },
+        "created_at": event_timestamp
+    }
+
+    raw = json.dumps(real_razorpay_payload).encode("utf-8")
+    sig = sign_payload(raw, razorpay_config.webhook_secret)
+
+    response = client.post(
+        "/webhooks/razorpay",
+        content=raw,
+        headers={
+            "X-Razorpay-Signature": sig,
+            "X-Razorpay-Event-Id": "event_real_rzp_001",
+        },
+    )
+
+    assert response.status_code == 200
+    resp = response.json()
+    assert resp["status"] == "processed"
+    assert resp["outcome"] == "RECOVERED"
+    assert resp["attribution_status"] == "DIRECTLY_OBSERVED"
+    assert resp["attributable_revenue"] == 999.0
+    assert resp["net_recovered_revenue"] == 996.0
+    assert resp["payment_reference"] == "pay_REALPAY123456"
+
+
+def test_header_casing_and_signature_normalization(razorpay_config, sample_decision, sample_plan_pro):
+    """
+    Verify FastAPI route accepts lowercased and mixed-cased HTTP headers and uppercase hex signatures.
+    """
+    context = ReviveRuntimeContext(config=razorpay_config)
+    set_runtime_context(context)
+    client = TestClient(app)
+
+    audit_rec = context.execute_decision(sample_decision, plan=sample_plan_pro)
+    data = generate_razorpay_payment_link_paid_payload(reference_id=audit_rec.payload_id, event_id="evt_case_test")
+    raw = json.dumps(data).encode("utf-8")
+
+    # Uppercase hex signature
+    sig_upper = sign_payload(raw, razorpay_config.webhook_secret).upper()
+
+    # Lowercase header keys
+    response = client.post(
+        "/webhooks/razorpay",
+        content=raw,
+        headers={
+            "x-razorpay-signature": sig_upper,
+            "x-razorpay-event-id": "evt_case_test_001",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "processed"
+
+
+def test_null_entity_resilience(razorpay_config, sample_decision, sample_plan_pro):
+    """
+    Verify parser does not crash when payment_link or payment wrapper is None or missing.
+    """
+    context = ReviveRuntimeContext(config=razorpay_config)
+    set_runtime_context(context)
+
+    # Missing payload contents
+    sparse_payload = {
+        "event": "payment_link.paid",
+        "payload": {
+            "payment_link": None,
+            "payment": None,
+        }
+    }
+    raw = json.dumps(sparse_payload).encode("utf-8")
+    sig = sign_payload(raw, razorpay_config.webhook_secret)
+
+    st, resp = context.webhook_handler.process_webhook(
+        raw_body=raw,
+        signature=sig,
+        event_id_header="evt_sparse_001",
+    )
+
+    # Handled safely as 404 unmatched reference instead of 500 crash
+    assert st == 404
+    assert resp["status"] == "not_found"
+
+
+def test_real_razorpay_timestamp_temporal_separation(razorpay_config, sample_decision, sample_plan_pro):
+    """
+    Regression Test for Root Cause:
+    When webhook_payload.created_at and payment_link.entity.created_at <= execution_timestamp,
+    but payment.entity.created_at > execution_timestamp, REVIVE must use payment.entity.created_at,
+    placing PAYMENT_SUCCEEDED into post_execution_events to yield RECOVERED and DIRECTLY_OBSERVED.
+    """
+    context = ReviveRuntimeContext(config=razorpay_config)
+    set_runtime_context(context)
+    client = TestClient(app)
+
+    # 1. Execute decision at execution_timestamp (e.g. 2026-08-05T12:00:00+00:00)
+    audit_rec = context.execute_decision(sample_decision, plan=sample_plan_pro)
+    exec_ts_int = int(datetime.fromisoformat(audit_rec.execution_timestamp).timestamp())
+
+    # 2. Simulate Razorpay webhook payload where link creation occurred BEFORE or AT execution time,
+    # but payment occurred 15 minutes AFTER execution.
+    link_created_at = exec_ts_int - 5  # 5 seconds before/at execution
+    payment_created_at = exec_ts_int + 900  # 15 minutes after execution
+
+    payload_dict = generate_razorpay_payment_link_paid_payload(
+        reference_id=audit_rec.payload_id,
+        event_id="evt_temporal_proof_001",
+        payment_id="pay_TEMPORAL_999",
+        amount_paise=99900,
+        payment_created_at_ts=payment_created_at,
+        link_created_at_ts=link_created_at,
+    )
+
+    raw_body = json.dumps(payload_dict).encode("utf-8")
+    sig = sign_payload(raw_body, razorpay_config.webhook_secret)
+
+    response = client.post(
+        "/webhooks/razorpay",
+        content=raw_body,
+        headers={
+            "X-Razorpay-Signature": sig,
+            "X-Razorpay-Event-Id": "evt_temporal_proof_001",
+        },
+    )
+
+    assert response.status_code == 200
+    resp = response.json()
+    assert resp["status"] == "processed"
+    assert resp["outcome"] == "RECOVERED"
+    assert resp["attribution_status"] == "DIRECTLY_OBSERVED"
+    assert resp["attributable_revenue"] == 999.0
+    assert resp["net_recovered_revenue"] == 996.0
+    assert resp["payment_reference"] == "pay_TEMPORAL_999"
+
+
+def test_genuinely_pre_execution_payment_still_resolves_already_converted(razorpay_config, sample_decision, sample_plan_pro):
+    """
+    Verify that if payment.entity.created_at is genuinely before execution_timestamp,
+    the event is correctly identified as pre-existing conversion (ALREADY_CONVERTED / UNATTRIBUTED).
+    """
+    context = ReviveRuntimeContext(config=razorpay_config)
+    set_runtime_context(context)
+    client = TestClient(app)
+
+    audit_rec = context.execute_decision(sample_decision, plan=sample_plan_pro)
+    exec_ts_int = int(datetime.fromisoformat(audit_rec.execution_timestamp).timestamp())
+
+    # Genuinely pre-execution payment (1 hour before execution)
+    prior_payment_ts = exec_ts_int - 3600
+
+    payload_dict = generate_razorpay_payment_link_paid_payload(
+        reference_id=audit_rec.payload_id,
+        event_id="evt_pre_exec_001",
+        payment_id="pay_PRIOR_001",
+        amount_paise=99900,
+        payment_created_at_ts=prior_payment_ts,
+        link_created_at_ts=prior_payment_ts,
+    )
+
+    raw_body = json.dumps(payload_dict).encode("utf-8")
+    sig = sign_payload(raw_body, razorpay_config.webhook_secret)
+
+    response = client.post(
+        "/webhooks/razorpay",
+        content=raw_body,
+        headers={
+            "X-Razorpay-Signature": sig,
+            "X-Razorpay-Event-Id": "evt_pre_exec_001",
+        },
+    )
+
+    assert response.status_code == 200
+    resp = response.json()
+    assert resp["status"] == "processed"
+    assert resp["outcome"] == "ALREADY_CONVERTED"
+    assert resp["attribution_status"] == "UNATTRIBUTED"
+    assert resp["attributable_revenue"] == 0.0
+    assert resp["net_recovered_revenue"] == -3.0
+
+
+def test_missing_payment_created_at_is_retryable_processing_failure(razorpay_config, sample_decision, sample_plan_pro):
+    """
+    Test Case C:
+    When payload.payment.entity.created_at is missing, REVIVE must reject with retryable HTTP 422,
+    must NOT mark the event_id as processed, must NOT create an OutcomeRecord, and must NOT attribute revenue.
+    Subsequent delivery with valid timestamp must be processed normally.
+    """
+    context = ReviveRuntimeContext(config=razorpay_config)
+    set_runtime_context(context)
+    client = TestClient(app)
+
+    audit_rec = context.execute_decision(sample_decision, plan=sample_plan_pro)
+
+    # Missing created_at on payment entity
+    payload_dict = generate_razorpay_payment_link_paid_payload(
+        reference_id=audit_rec.payload_id,
+        event_id="evt_missing_ts_001",
+    )
+    payload_dict["payload"]["payment"]["entity"].pop("created_at", None)
+
+    raw_body = json.dumps(payload_dict).encode("utf-8")
+    sig = sign_payload(raw_body, razorpay_config.webhook_secret)
+
+    response = client.post(
+        "/webhooks/razorpay",
+        content=raw_body,
+        headers={
+            "X-Razorpay-Signature": sig,
+            "X-Razorpay-Event-Id": "evt_missing_ts_001",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["status"] == "malformed_payload"
+    assert "evt_missing_ts_001" not in context.webhook_handler.processed_event_ids
+    assert len(context.outcome_engine.get_customer_outcomes(sample_decision.customer_id)) == 0
+
+    # Retry with valid timestamp succeeds
+    exec_ts_int = int(datetime.fromisoformat(audit_rec.execution_timestamp).timestamp())
+    valid_payload = generate_razorpay_payment_link_paid_payload(
+        reference_id=audit_rec.payload_id,
+        event_id="evt_missing_ts_001",
+        payment_created_at_ts=exec_ts_int + 60,
+    )
+    raw_valid = json.dumps(valid_payload).encode("utf-8")
+    sig_valid = sign_payload(raw_valid, razorpay_config.webhook_secret)
+
+    retry_resp = client.post(
+        "/webhooks/razorpay",
+        content=raw_valid,
+        headers={
+            "X-Razorpay-Signature": sig_valid,
+            "X-Razorpay-Event-Id": "evt_missing_ts_001",
+        },
+    )
+    assert retry_resp.status_code == 200
+    assert retry_resp.json()["status"] == "processed"
+    assert retry_resp.json()["outcome"] == "RECOVERED"
+    assert "evt_missing_ts_001" in context.webhook_handler.processed_event_ids
+
+
+def test_malformed_payment_created_at_is_retryable_processing_failure(razorpay_config, sample_decision, sample_plan_pro):
+    """
+    Test Case D:
+    When payload.payment.entity.created_at is malformed (e.g. non-numeric string 'invalid_ts'),
+    REVIVE must reject with retryable HTTP 422, must NOT mark the event_id as processed, and must NOT create an OutcomeRecord.
+    """
+    context = ReviveRuntimeContext(config=razorpay_config)
+    set_runtime_context(context)
+    client = TestClient(app)
+
+    audit_rec = context.execute_decision(sample_decision, plan=sample_plan_pro)
+
+    # Malformed created_at on payment entity
+    payload_dict = generate_razorpay_payment_link_paid_payload(
+        reference_id=audit_rec.payload_id,
+        event_id="evt_malformed_ts_001",
+    )
+    payload_dict["payload"]["payment"]["entity"]["created_at"] = "invalid_not_a_timestamp"
+
+    raw_body = json.dumps(payload_dict).encode("utf-8")
+    sig = sign_payload(raw_body, razorpay_config.webhook_secret)
+
+    response = client.post(
+        "/webhooks/razorpay",
+        content=raw_body,
+        headers={
+            "X-Razorpay-Signature": sig,
+            "X-Razorpay-Event-Id": "evt_malformed_ts_001",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["status"] == "malformed_payload"
+    assert "evt_malformed_ts_001" not in context.webhook_handler.processed_event_ids
+    assert len(context.outcome_engine.get_customer_outcomes(sample_decision.customer_id)) == 0

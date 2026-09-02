@@ -32,6 +32,11 @@ from app.outcome.schemas import OutcomeRecord
 from app.integrations.razorpay.config import DEFAULT_RAZORPAY_CONFIG, RazorpayConfig
 
 
+def _safe_dict(val: Any) -> Dict[str, Any]:
+    """Ensure value is a dictionary; returns empty dict if value is None, list, or non-dict."""
+    return val if isinstance(val, dict) else {}
+
+
 def verify_webhook_signature(
     raw_body: bytes,
     signature: Optional[str],
@@ -50,8 +55,8 @@ def verify_webhook_signature(
             key=secret.encode("utf-8"),
             msg=raw_body,
             digestmod=hashlib.sha256,
-        ).hexdigest()
-        return hmac.compare_digest(expected_signature, signature.strip())
+        ).hexdigest().lower()
+        return hmac.compare_digest(expected_signature, signature.strip().lower())
     except Exception:
         return False
 
@@ -163,27 +168,70 @@ def translate_razorpay_event_to_base_event(
     - 'payment_link.paid' is the ONLY primary successful recovery event (-> PAYMENT_SUCCEEDED).
     - 'payment.failed' maps to PAYMENT_FAILED.
     - Other events return None (non-mutating).
+
+    Strict Temporal Semantics for Phase 7 Outcome Integration:
+    For 'payment_link.paid', the canonical BaseEvent(PAYMENT_SUCCEEDED) timestamp MUST come from
+    `payload.payment.entity.created_at` ONLY.
+    In Razorpay's data model, `payment.entity.created_at` records the exact Unix timestamp when the
+    customer completed the financial payment transaction.
+    Fallbacks to `payment_link.entity.created_at`, `payment_link.entity.updated_at`, `webhook_payload.created_at`,
+    or `datetime.now()` are STRICTLY FORBIDDEN, as they corrupt temporal ordering (causing post-intervention
+    recovery payments to be misclassified as pre-existing conversions ALREADY_CONVERTED).
+    If `payload.payment.entity.created_at` is missing or malformed, translation returns None (triggering
+    a retry-safe processing error).
     """
     event_name = webhook_payload.get("event", "")
-    payload_data = webhook_payload.get("payload", {})
-
-    created_at_raw = webhook_payload.get("created_at")
-    if created_at_raw and isinstance(created_at_raw, (int, float)):
-        event_dt = datetime.fromtimestamp(created_at_raw, tz=timezone.utc)
-    else:
-        event_dt = datetime.now(timezone.utc)
+    payload_data = _safe_dict(webhook_payload.get("payload"))
 
     # Primary recovery event for Phase A Payment Links
     if event_name == "payment_link.paid":
-        payment_link_entity = payload_data.get("payment_link", {}).get("entity", {})
-        payment_entity = payload_data.get("payment", {}).get("entity", {})
+        payment_link_wrapper = _safe_dict(payload_data.get("payment_link"))
+        payment_link_entity = _safe_dict(payment_link_wrapper.get("entity"))
 
-        payment_id = payment_entity.get("id") or f"pay_link_{payment_link_entity.get('id', 'unknown')}"
+        payment_wrapper = _safe_dict(payload_data.get("payment"))
+        payment_entity = _safe_dict(payment_wrapper.get("entity"))
+
+        # Strict Authoritative observable payment timestamp:
+        # payload.payment.entity.created_at ONLY. Zero fallback permitted.
+        raw_payment_ts = payment_entity.get("created_at")
+        if raw_payment_ts is None:
+            return None  # Missing authoritative payment timestamp -> fail translation safely
+
+        if isinstance(raw_payment_ts, (int, float)):
+            try:
+                event_dt = datetime.fromtimestamp(raw_payment_ts, tz=timezone.utc)
+            except (ValueError, OverflowError, OSError):
+                return None
+        elif isinstance(raw_payment_ts, str) and raw_payment_ts.strip():
+            try:
+                if raw_payment_ts.strip().isdigit():
+                    event_dt = datetime.fromtimestamp(float(raw_payment_ts.strip()), tz=timezone.utc)
+                else:
+                    event_dt = datetime.fromisoformat(raw_payment_ts.strip())
+            except Exception:
+                return None
+        else:
+            return None  # Malformed or non-timestamp type
+
+        payment_id = payment_entity.get("id") or (f"pay_link_{payment_link_entity.get('id')}" if payment_link_entity.get("id") else "unknown_pay")
         payment_link_id = payment_link_entity.get("id") or payload_data.get("payment_link_id")
-        ref_id = payment_link_entity.get("reference_id") or payment_entity.get("notes", {}).get("reference_id")
+
+        # Safely extract reference_id across documented Razorpay locations
+        ref_id = payment_link_entity.get("reference_id")
+        if not ref_id:
+            payment_notes = _safe_dict(payment_entity.get("notes"))
+            ref_id = payment_notes.get("reference_id")
+        if not ref_id:
+            link_notes = _safe_dict(payment_link_entity.get("notes"))
+            ref_id = link_notes.get("reference_id")
+        if not ref_id:
+            ref_id = payload_data.get("reference_id")
 
         amount_paise = payment_entity.get("amount") or payment_link_entity.get("amount") or 0
-        amount_inr = str(Decimal(amount_paise) / Decimal("100.00")) if amount_paise else "0.00"
+        try:
+            amount_inr = str(Decimal(str(amount_paise)) / Decimal("100.00")) if amount_paise else "0.00"
+        except Exception:
+            amount_inr = "0.00"
 
         currency = payment_entity.get("currency") or payment_link_entity.get("currency") or "INR"
         method = payment_entity.get("method")
@@ -209,10 +257,36 @@ def translate_razorpay_event_to_base_event(
         )
 
     if event_name == "payment.failed":
-        payment_entity = payload_data.get("payment", {}).get("entity", {})
+        payment_wrapper = _safe_dict(payload_data.get("payment"))
+        payment_entity = _safe_dict(payment_wrapper.get("entity"))
+
+        raw_failed_ts = payment_entity.get("created_at")
+        if raw_failed_ts is None:
+            return None
+
+        if isinstance(raw_failed_ts, (int, float)):
+            try:
+                event_dt = datetime.fromtimestamp(raw_failed_ts, tz=timezone.utc)
+            except (ValueError, OverflowError, OSError):
+                return None
+        elif isinstance(raw_failed_ts, str) and raw_failed_ts.strip():
+            try:
+                if raw_failed_ts.strip().isdigit():
+                    event_dt = datetime.fromtimestamp(float(raw_failed_ts.strip()), tz=timezone.utc)
+                else:
+                    event_dt = datetime.fromisoformat(raw_failed_ts.strip())
+            except Exception:
+                return None
+        else:
+            return None
+
         payment_id = payment_entity.get("id", "unknown_pay")
         amount_paise = payment_entity.get("amount", 0)
-        amount_inr = str(Decimal(amount_paise) / Decimal("100.00")) if amount_paise else "0.00"
+        try:
+            amount_inr = str(Decimal(str(amount_paise)) / Decimal("100.00")) if amount_paise else "0.00"
+        except Exception:
+            amount_inr = "0.00"
+
         err_code = payment_entity.get("error_code", "PAYMENT_FAILED")
         err_desc = payment_entity.get("error_description", "Payment failed on gateway")
 
@@ -369,18 +443,24 @@ class RazorpayWebhookHandler:
                 "message": "Event type ignored safely",
             }
 
-        # 6. Extract reference_id (mapped to REVIVE payload_id)
-        payload_data = payload_json.get("payload", {})
-        payment_link_entity = payload_data.get("payment_link", {}).get("entity", {})
-        payment_entity = payload_data.get("payment", {}).get("entity", {})
-
-        reference_id = (
-            payment_link_entity.get("reference_id")
-            or payment_entity.get("notes", {}).get("reference_id")
-            or payload_data.get("reference_id")
-        )
-
         try:
+            # 6. Extract reference_id safely (mapped to REVIVE payload_id)
+            payload_data = _safe_dict(payload_json.get("payload"))
+            payment_link_wrapper = _safe_dict(payload_data.get("payment_link"))
+            payment_link_entity = _safe_dict(payment_link_wrapper.get("entity"))
+            payment_wrapper = _safe_dict(payload_data.get("payment"))
+            payment_entity = _safe_dict(payment_wrapper.get("entity"))
+
+            reference_id = payment_link_entity.get("reference_id")
+            if not reference_id:
+                payment_notes = _safe_dict(payment_entity.get("notes"))
+                reference_id = payment_notes.get("reference_id")
+            if not reference_id:
+                link_notes = _safe_dict(payment_link_entity.get("notes"))
+                reference_id = link_notes.get("reference_id")
+            if not reference_id:
+                reference_id = payload_data.get("reference_id")
+
             # 7. Exact Correlation: reference_id -> payload_id -> ExecutionAuditRecord ONLY
             # No customer-name fallback is permitted.
             matched_exec_record: Optional[ExecutionAuditRecord] = None
@@ -461,20 +541,21 @@ class RazorpayWebhookHandler:
             )
 
             if not base_event:
-                self.processed_event_ids.add(event_id)  # Terminally handled / ignored
+                # Processing failure for supported primary event with missing/malformed required attributes:
+                # DO NOT mark as processed (allow subsequent delivery retries), DO NOT create outcome, DO NOT attribute revenue.
                 self.audit_store.log_webhook_event(
                     event_id=event_id,
                     event_type=event_type,
-                    status=WebhookProcessingStatus.UNSUPPORTED_IGNORED,
+                    status=WebhookProcessingStatus.MALFORMED_PAYLOAD,
                     reference_id=reference_id,
                     execution_id=matched_exec_record.execution_id,
                     customer_id=customer_id,
-                    reason="Event produced no observable BaseEvent transition",
+                    reason=f"Event translation failed: missing or malformed required payment timestamp on '{event_type}'. Fallbacks forbidden.",
                 )
-                return 200, {
-                    "status": "ignored",
-                    "event_id": event_id,
-                    "message": "Event produced no domain transition",
+                return 422, {
+                    "error": "Event translation failed: missing or malformed payment timestamp",
+                    "execution_id": matched_exec_record.execution_id,
+                    "status": "malformed_payload",
                 }
 
             # 11. Ingest into Existing OutcomeEngine
@@ -523,7 +604,7 @@ class RazorpayWebhookHandler:
                 event_id=event_id,
                 event_type=event_type,
                 status=WebhookProcessingStatus.MALFORMED_PAYLOAD,
-                reference_id=reference_id,
+                reference_id=reference_id if 'reference_id' in locals() else None,
                 reason=f"Unexpected internal webhook processing error: {str(e)}",
             )
             return 500, {

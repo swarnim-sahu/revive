@@ -1,6 +1,7 @@
 """
 Razorpay Webhook Route Handler for REVIVE Presentation & Integration API.
 Receives raw HTTP request body, extracts Razorpay headers, and delegates to RazorpayWebhookHandler.
+Provides safe request-level ingress diagnostics without exposing credentials.
 """
 
 from typing import Optional
@@ -54,10 +55,22 @@ async def handle_razorpay_webhook(
     raw_body = await request.body()
     handler = get_webhook_handler()
 
+    # Robust case-insensitive header fallback
+    signature = (
+        x_razorpay_signature
+        or request.headers.get("x-razorpay-signature")
+        or request.headers.get("X-Razorpay-Signature")
+    )
+    event_id = (
+        x_razorpay_event_id
+        or request.headers.get("x-razorpay-event-id")
+        or request.headers.get("X-Razorpay-Event-Id")
+    )
+
     status_code, response_data = handler.process_webhook(
         raw_body=raw_body,
-        signature=x_razorpay_signature,
-        event_id_header=x_razorpay_event_id,
+        signature=signature,
+        event_id_header=event_id,
     )
 
     return JSONResponse(status_code=status_code, content=response_data)
