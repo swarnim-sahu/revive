@@ -343,3 +343,126 @@ def test_razorpay_sandbox_client_malformed_json(fake_config):
         assert resp is None
         assert err is not None
         assert "malformed JSON" in err
+
+
+def test_exact_outbound_request_construction(fake_config):
+    """Verify exact outbound HTTP POST request structure and headers without sending live network traffic."""
+    import json
+    from unittest.mock import MagicMock, patch
+
+    client = RazorpaySandboxClient(config=fake_config)
+    req = RazorpayPaymentLinkRequest(
+        amount=99900,
+        currency="INR",
+        description="Exact Request Construction Test",
+        customer=RazorpayCustomerInfo(name="cus_exact_001", email="cus@example.com", contact="+919876543210"),
+        reference_id="ref_exact_payload_123",
+        callback_url="https://revive.example.com/payment-callback?payload_id=ref_exact_payload_123",
+        callback_method="get",
+    )
+
+    mock_resp = MagicMock()
+    mock_resp.read.return_value = b'{"id": "plink_exact_123", "short_url": "https://rzp.io/i/exact123", "status": "created", "reference_id": "ref_exact_payload_123", "amount": 99900, "currency": "INR", "created_at": 1724600000}'
+    mock_resp.__enter__.return_value = mock_resp
+    mock_resp.__exit__.return_value = None
+
+    with patch("urllib.request.urlopen", return_value=mock_resp) as mock_urlopen:
+        resp, err = client.create_payment_link(req, idempotency_key="idempotency_exact_001")
+
+        assert err is None
+        assert resp is not None
+        assert resp.payment_link_id == "plink_exact_123"
+
+        called_req = mock_urlopen.call_args[0][0]
+        # 1. URL and Method
+        assert called_req.get_full_url() == "https://api.razorpay.com/v1/payment_links"
+        assert called_req.get_method() == "POST"
+
+        # 2. Required Headers
+        assert called_req.headers["Content-type"] == "application/json"
+        assert called_req.headers["Accept"] == "application/json"
+        assert "revive-engine" in called_req.headers["User-agent"]
+        assert called_req.headers["X-razorpay-idempotency"] == "idempotency_exact_001"
+        assert "Basic " in called_req.headers["Authorization"]
+        assert fake_config.key_secret not in called_req.headers["Authorization"]  # Only base64 encoded
+
+        # 3. Decoded JSON Body
+        body = json.loads(called_req.data.decode("utf-8"))
+        assert body["amount"] == 99900
+        assert body["currency"] == "INR"
+        assert body["description"] == "Exact Request Construction Test"
+        assert body["reference_id"] == "ref_exact_payload_123"
+        assert body["customer"]["name"] == "cus_exact_001"
+        assert body["customer"]["email"] == "cus@example.com"
+        assert body["customer"]["contact"] == "+919876543210"
+        assert body["callback_url"] == "https://revive.example.com/payment-callback?payload_id=ref_exact_payload_123"
+        assert body["callback_method"] == "get"
+
+        # 4. Zero Ground-Truth Simulator Leakage
+        body_str = json.dumps(body)
+        assert "ground_truth" not in body_str
+        assert "true_root_cause" not in body_str
+        assert "natural_conversion" not in body_str
+
+
+def test_transport_connection_reset_handling(fake_config):
+    """Verify ConnectionResetError is caught cleanly as transport error without credential leakage."""
+    from unittest.mock import patch
+
+    client = RazorpaySandboxClient(config=fake_config)
+    req = RazorpayPaymentLinkRequest(
+        amount=99900,
+        description="Reset Test",
+        customer=RazorpayCustomerInfo(name="cus_reset"),
+        reference_id="ref_reset_001",
+    )
+
+    with patch("urllib.request.urlopen", side_effect=ConnectionResetError(10054, "An existing connection was forcibly closed by the remote host")):
+        resp, err = client.create_payment_link(req)
+
+        assert resp is None
+        assert err is not None
+        assert "Razorpay transport error" in err
+        assert "ConnectionResetError" in err
+        assert fake_config.key_secret not in err
+
+
+def test_check_connectivity_diagnostic(fake_config):
+    """Verify safe diagnostic GET check_connectivity() without creating payment links."""
+    from unittest.mock import MagicMock, patch
+    import urllib.error
+
+    client = RazorpaySandboxClient(config=fake_config)
+
+    # 1. Success case (HTTP 200)
+    mock_resp = MagicMock()
+    mock_resp.status = 200
+    mock_resp.__enter__.return_value = mock_resp
+    mock_resp.__exit__.return_value = None
+
+    with patch("urllib.request.urlopen", return_value=mock_resp) as mock_urlopen:
+        ok, err = client.check_connectivity()
+        assert ok is True
+        assert err is None
+        called_req = mock_urlopen.call_args[0][0]
+        assert called_req.get_full_url() == "https://api.razorpay.com/v1/payment_links?count=1"
+        assert called_req.get_method() == "GET"
+
+    # 2. HTTP Error case (HTTP 401)
+    http_error = urllib.error.HTTPError(
+        url="https://api.razorpay.com/v1/payment_links?count=1",
+        code=401,
+        msg="Unauthorized",
+        hdrs={},
+        fp=None,
+    )
+    with patch("urllib.request.urlopen", side_effect=http_error):
+        ok, err = client.check_connectivity()
+        assert ok is False
+        assert "401" in err
+
+    # 3. Missing credentials case
+    no_cred_client = RazorpaySandboxClient(config=RazorpayConfig(environment="sandbox", key_id=None, key_secret=None))
+    ok, err = no_cred_client.check_connectivity()
+    assert ok is False
+    assert "missing KEY_ID or KEY_SECRET" in err

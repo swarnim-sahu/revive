@@ -7,16 +7,20 @@ and RazorpaySandboxClient for sandbox integration.
 from abc import ABC, abstractmethod
 import base64
 import json
+import socket
 import time
 import urllib.error
 import urllib.request
-from typing import Dict, Optional, Set, Tuple
+from typing import Any, Dict, Optional, Set, Tuple
 
 from app.integrations.razorpay.config import DEFAULT_RAZORPAY_CONFIG, RazorpayConfig
 from app.integrations.razorpay.schemas import (
     RazorpayPaymentLinkRequest,
     RazorpayPaymentLinkResponse,
 )
+
+# Canonical client User-Agent for Revive outbound HTTP requests
+REVIVE_USER_AGENT = "revive-engine/1.0 (Razorpay Integration; Python; Windows)"
 
 
 class BaseRazorpayClient(ABC):
@@ -93,6 +97,39 @@ class RazorpaySandboxClient(BaseRazorpayClient):
     def __init__(self, config: RazorpayConfig = DEFAULT_RAZORPAY_CONFIG) -> None:
         self.config = config
 
+    def check_connectivity(self) -> Tuple[bool, Optional[str]]:
+        """
+        Perform a safe, read-only diagnostic GET request against /v1/payment_links?count=1.
+        Does NOT create any Payment Link. Verifies network connectivity and authentication.
+        """
+        if not self.config.key_id or not self.config.key_secret:
+            return False, "Razorpay authentication failed: missing KEY_ID or KEY_SECRET credentials"
+
+        url = f"{self.config.base_url.rstrip('/')}/payment_links?count=1"
+        creds = f"{self.config.key_id}:{self.config.key_secret}".encode("utf-8")
+        auth_header = f"Basic {base64.b64encode(creds).decode('ascii')}"
+
+        headers = {
+            "Accept": "application/json",
+            "User-Agent": REVIVE_USER_AGENT,
+            "Authorization": auth_header,
+        }
+
+        http_req = urllib.request.Request(url=url, headers=headers, method="GET")
+
+        try:
+            with urllib.request.urlopen(http_req, timeout=self.config.request_timeout_seconds) as resp:
+                if resp.status == 200:
+                    return True, None
+                return False, f"Diagnostic GET returned HTTP {resp.status}"
+        except urllib.error.HTTPError as e:
+            return False, f"Diagnostic GET failed: HTTP {e.code} {e.reason}"
+        except Exception as e:
+            err_msg = str(e)
+            if self.config.key_secret:
+                err_msg = err_msg.replace(self.config.key_secret, "[REDACTED]")
+            return False, f"Diagnostic GET connection error: {err_msg}"
+
     def create_payment_link(
         self,
         request: RazorpayPaymentLinkRequest,
@@ -104,7 +141,7 @@ class RazorpaySandboxClient(BaseRazorpayClient):
         url = f"{self.config.base_url.rstrip('/')}/payment_links"
 
         # Build request body payload
-        payload_dict = {
+        payload_dict: Dict[str, Any] = {
             "amount": request.amount,
             "currency": request.currency,
             "accept_partial": request.accept_partial,
@@ -133,6 +170,8 @@ class RazorpaySandboxClient(BaseRazorpayClient):
 
         headers = {
             "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": REVIVE_USER_AGENT,
             "Authorization": auth_header,
         }
         if idempotency_key or request.reference_id:
@@ -181,11 +220,18 @@ class RazorpaySandboxClient(BaseRazorpayClient):
 
             return None, safe_err
 
-        except urllib.error.URLError as e:
-            return None, f"Razorpay connection error: {e.reason}"
+        except (ConnectionResetError, ConnectionRefusedError, ConnectionAbortedError) as e:
+            return None, f"Razorpay transport error (connection reset): {type(e).__name__} {str(e)}"
 
-        except TimeoutError:
-            return None, "Razorpay request timed out"
+        except urllib.error.URLError as e:
+            # Inspect inner reason for socket/reset errors
+            inner_reason = str(e.reason)
+            if "10054" in inner_reason or "connection was forcibly closed" in inner_reason.lower():
+                return None, f"Razorpay transport error: connection closed by remote server ({inner_reason})"
+            return None, f"Razorpay connection error: {inner_reason}"
+
+        except (TimeoutError, socket.timeout):
+            return None, f"Razorpay request timed out after {self.config.request_timeout_seconds}s"
 
         except json.JSONDecodeError:
             return None, "Razorpay returned malformed JSON response"

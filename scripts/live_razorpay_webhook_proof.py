@@ -272,6 +272,12 @@ def run_live_proof(
         payment_url = audit_record.target_url
     else:
         rzp_client = RazorpaySandboxClient(config=rzp_config)
+        conn_ok, conn_err = rzp_client.check_connectivity()
+        if not conn_ok:
+            log(f"[WARN] Pre-flight Razorpay API check returned: {conn_err}")
+        else:
+            log("[OK] Pre-flight Razorpay API connectivity verified (read-only GET succeeded)")
+
         dispatcher = RazorpaySandboxDispatcher(config=rzp_config, client=rzp_client)
 
         audit_record = context.execute_decision(
