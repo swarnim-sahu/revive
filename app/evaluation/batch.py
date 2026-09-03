@@ -79,12 +79,17 @@ class EvaluationResponseSimulator:
         if exec_dt.tzinfo is None:
             exec_dt = exec_dt.replace(tzinfo=timezone.utc)
 
-        # Baseline recovery probability from intervention decision candidate scores
-        prob = 0.382  # Default baseline assumption for PAYMENT_RECOVERY
-        for candidate in decision.candidate_scores:
-            if candidate.action == InterventionAction.PAYMENT_RECOVERY:
-                prob = candidate.recovery_probability_assumption
-                break
+        # Locate PAYMENT_RECOVERY candidate directly from intervention decision candidate scores
+        recovery_candidate = next(
+            (c for c in decision.candidate_scores if c.action == InterventionAction.PAYMENT_RECOVERY),
+            None,
+        )
+        if recovery_candidate is None:
+            raise ValueError(
+                f"Missing PAYMENT_RECOVERY candidate score in decision for customer {decision.customer_id}. "
+                "EvaluationResponseSimulator requires an explicit recovery probability assumption without silent fallback."
+            )
+        prob = recovery_candidate.recovery_probability_assumption
 
         # Bounded between 0.0 and 1.0
         prob = max(0.0, min(1.0, prob))
@@ -156,6 +161,18 @@ class CustomerEvidenceRecord:
     net_recovered_revenue: Optional[float] = None
     payment_reference: Optional[str] = None
     evidence_event_ids: List[str] = field(default_factory=list)
+    # Phase C Presentation & Explainability Fields (Cleanly Sourced from Authoritative Engines)
+    plan: str = "pro"
+    actionability: str = "candidate"
+    candidate_scores: List[Dict[str, Any]] = field(default_factory=list)
+    rejection_reasons: Dict[str, str] = field(default_factory=dict)
+    supporting_evidence: List[str] = field(default_factory=list)
+    risk_signals: Dict[str, bool] = field(default_factory=dict)
+    policy_version: str = "v1.0.0"
+    assumption_version: str = "v1.0.0"
+    decision_timestamp: Optional[str] = None
+    execution_timestamp: Optional[str] = None
+    measurement_timestamp: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -396,6 +413,28 @@ class BatchRecoveryEvaluator:
             )
             outcome_records.append(outcome_rec)
 
+            # Format candidate action scores directly from authoritative InterventionDecision
+            candidate_action_dicts = []
+            for cs in decision.candidate_scores:
+                candidate_action_dicts.append({
+                    "action": cs.action.value,
+                    "expected_value": float(cs.expected_value),
+                    "recovery_probability": float(cs.recovery_probability_assumption),
+                    "direct_cost": float(cs.direct_cost),
+                    "eligible": cs.is_eligible,
+                    "selected": (cs.action == decision.selected_action),
+                    "rejection_reason": decision.rejection_reasons.get(cs.action.value) or cs.disqualification_reason,
+                })
+
+            # Observable risk signals derived strictly from observable event history and features (not diagnosis label)
+            risk_signals = {
+                "payment_failed_observed": bool(feat_rec.get("has_payment_failure", False) or any(e.event_type.value == "payment_failed" for e in evts)),
+                "cart_abandonment_observed": bool(feat_rec.get("has_checkout_abandonment", False) or any(e.event_type.value == "checkout_abandoned" for e in evts)),
+                "trial_expiration_approaching": bool(feat_rec.get("hours_until_trial_expiry", 999.0) <= 24.0),
+                "inactivity_detected": bool(feat_rec.get("days_since_last_active", 0.0) >= 3.0),
+                "prior_conversion_detected": bool(feat_rec.get("has_prior_conversion", False) or any(e.event_type.value in {"subscription_created", "payment_succeeded"} for e in evts)),
+            }
+
             # Build CustomerEvidenceRecord
             rec = CustomerEvidenceRecord(
                 customer_id=cid,
@@ -420,6 +459,17 @@ class BatchRecoveryEvaluator:
                 net_recovered_revenue=float(outcome_rec.net_recovered_revenue),
                 payment_reference=outcome_rec.payment_reference,
                 evidence_event_ids=outcome_rec.evidence_event_ids,
+                plan=cust.plan_id,
+                actionability=base_diag.actionability.value,
+                candidate_scores=candidate_action_dicts,
+                rejection_reasons=dict(decision.rejection_reasons),
+                supporting_evidence=list(decision.supporting_evidence),
+                risk_signals=risk_signals,
+                policy_version=decision.policy_version,
+                assumption_version=decision.assumption_version,
+                decision_timestamp=decision.decision_timestamp,
+                execution_timestamp=audit_rec.execution_timestamp if audit_rec.status.value != "NO_ACTION" else None,
+                measurement_timestamp=None,
             )
             per_customer_records.append(rec)
 

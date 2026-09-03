@@ -127,7 +127,9 @@ class ComparativeEconomics(BaseModel):
     treatment_natural_conversions: int
     treatment_genuine_incremental_recoveries: int
     treatment_observed_unrecoverable_conversions: int
+    treatment_no_treatment_conversions: int = 0
     treatment_total_gross_revenue: float
+    gross_revenue_delta_vs_control: float = 0.0
     treatment_attributable_recovery_revenue: float
     treatment_intervention_cost: float
     treatment_net_recovered_revenue: float

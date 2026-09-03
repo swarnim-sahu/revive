@@ -1,0 +1,154 @@
+{
+  "metadata": {
+    "experiment_id": "exp_phase_b_42_10000",
+    "seed": 42,
+    "paired_experimental_units": 10000,
+    "control_evaluations": 10000,
+    "treatment_evaluations": 10000,
+    "total_arm_evaluations": 20000,
+    "simulator_version": "v2.0.0",
+    "policy_version": "Phase 5 Bounded EV v1.0",
+    "assumption_version": "Recovery Probability v1.0",
+    "risk_model_version": "RandomForest-v1.0.0",
+    "python_version": "3.13.9",
+    "timestamp": "2026-09-02T19:01:11.516448+00:00",
+    "git_revision": null
+  },
+  "economics": {
+    "paired_experimental_units": 10000,
+    "control_evaluations": 10000,
+    "control_conversions": 3721,
+    "control_conversion_rate": 0.3721,
+    "control_gross_revenue": 13396279.0,
+    "control_net_revenue": 13396279.0,
+    "control_revenue_at_risk": 37490000.0,
+    "treatment_evaluations": 10000,
+    "treatment_total_conversions": 4220,
+    "treatment_total_conversion_rate": 0.422,
+    "treatment_natural_conversions": 3721,
+    "treatment_genuine_incremental_recoveries": 341,
+    "treatment_observed_unrecoverable_conversions": 158,
+    "treatment_no_treatment_conversions": 5780,
+    "treatment_total_gross_revenue": 15425780.0,
+    "gross_revenue_delta_vs_control": 2029501.0,
+    "treatment_attributable_recovery_revenue": 2514386.0,
+    "treatment_intervention_cost": 14079.0,
+    "treatment_net_recovered_revenue": 2500307.0,
+    "treatment_total_net_revenue": 15411701.0,
+    "treatment_genuine_incremental_revenue": 1415659.0,
+    "treatment_expected_recovery_value": 1745291.21,
+    "conversion_lift_points": 4.99,
+    "conversion_relative_lift_pct": 13.41,
+    "incremental_net_revenue": 2015422.0,
+    "maximum_recoverable_revenue": 10405457.0,
+    "recoverable_capture_rate_pct": 13.6,
+    "recovery_roi": 143.15
+  },
+  "diagnosis_accuracy": {
+    "overall_accuracy": 0.2586,
+    "macro_f1": 0.1642,
+    "macro_precision": 0.1075,
+    "macro_recall": 0.3577
+  },
+  "intervention_appropriateness": {
+    "active_interventions_count": 7809,
+    "targeted_recoverable_count": 2543,
+    "targeted_recoverable_rate": 0.3256,
+    "unnecessary_on_natural_count": 1530,
+    "unnecessary_on_natural_rate": 0.1959,
+    "ineffective_on_unrecoverable_count": 3736,
+    "ineffective_on_unrecoverable_rate": 0.4784,
+    "safety_policy_compliance_rate": 1.0,
+    "evidence_action_consistency_rate": 1.0,
+    "no_action_count": 2191,
+    "no_action_rate": 0.2191,
+    "no_action_on_natural_count": 2191,
+    "no_action_on_non_recoverable_count": 0,
+    "no_action_on_recoverable_missed_count": 0,
+    "no_action_safe_avoidance_rate": 1.0,
+    "no_action_missed_opportunity_rate": 0.0
+  },
+  "decision_funnel": {
+    "total_population": 10000,
+    "at_risk_population": 10000,
+    "diagnosable_population": 7809,
+    "eligible_population": 7809,
+    "no_action_count": 2191,
+    "no_action_rate": 0.2191,
+    "human_review_count": 0,
+    "human_review_rate": 0.0,
+    "automated_intervention_count": 7809,
+    "automated_intervention_rate": 0.7809,
+    "per_action_distribution": {
+      "NO_ACTION": {
+        "count": 2191,
+        "rate": 0.2191
+      },
+      "PRODUCT_GUIDANCE": {
+        "count": 0,
+        "rate": 0.0
+      },
+      "REMINDER": {
+        "count": 6232,
+        "rate": 0.6232
+      },
+      "CHECKOUT_ASSISTANCE": {
+        "count": 0,
+        "rate": 0.0
+      },
+      "PAYMENT_RECOVERY": {
+        "count": 1577,
+        "rate": 0.1577
+      },
+      "TRIAL_EXTENSION": {
+        "count": 0,
+        "rate": 0.0
+      },
+      "HUMAN_REVIEW": {
+        "count": 0,
+        "rate": 0.0
+      }
+    }
+  },
+  "safety_governance": {
+    "stop_rate": 0.2191,
+    "escalation_rate": 0.0,
+    "blocked_ineligible_rate": 0.2191,
+    "unnecessary_intervention_rate": 0.1959,
+    "execution_failure_rate": 0.0,
+    "retryable_failure_count": 0,
+    "terminal_failure_count": 2191
+  },
+  "throughput": {
+    "start_time": "2026-09-02T19:01:11.516448+00:00",
+    "end_time": "2026-09-02T19:02:57.498419+00:00",
+    "elapsed_seconds": 105.9819,
+    "paired_experimental_units": 10000,
+    "control_arm_evaluations": 10000,
+    "treatment_arm_evaluations": 10000,
+    "total_arm_evaluations": 20000,
+    "initial_journey_events": 529367,
+    "post_treatment_events": 1577,
+    "events_processed": 530944,
+    "paired_units_per_second": 94.36,
+    "total_evaluations_per_second": 188.71,
+    "events_per_second": 5009.76,
+    "initial_journey_events_per_second": 4994.88,
+    "average_case_latency_ms": 10.09,
+    "p95_case_latency_ms": 13.29
+  },
+  "exception_summary": {
+    "total_exceptions": 2191,
+    "retryable_count": 0,
+    "terminal_count": 2191,
+    "human_escalation_count": 0,
+    "total_financial_impact": 0.0,
+    "by_stage": {
+      "INTERVENTION_POLICY": 2191
+    },
+    "by_failure_type": {
+      "policy_block": 2191
+    }
+  },
+  "reconciliation_passed": true
+}
