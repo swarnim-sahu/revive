@@ -6,6 +6,7 @@ import {
   fetchRazorpayProof,
   fetchExceptions,
   fetchFailureScenarios,
+  fetchGeminiEvaluation,
 } from "./api";
 import { CustomerDrawer } from "./CustomerDrawer";
 import { formatINR } from "./utils";
@@ -16,10 +17,11 @@ import type {
   RazorpayProofData,
   ExceptionCenterData,
   FailureScenarioData,
+  GeminiEvaluationData,
 } from "./types";
 import "./App.css";
 
-type TabView = "overview" | "benchmark" | "proof" | "exceptions" | "failure" | "methodology";
+type TabView = "overview" | "benchmark" | "proof" | "gemini" | "exceptions" | "failure" | "methodology";
 
 export function App() {
   const [activeTab, setActiveTab] = useState<TabView>("overview");
@@ -38,6 +40,7 @@ export function App() {
   const [exceptionsData, setExceptionsData] = useState<ExceptionCenterData | null>(null);
   const [failureScenarios, setFailureScenarios] = useState<FailureScenarioData[]>([]);
   const [selectedFailureIdx, setSelectedFailureIdx] = useState<number>(0);
+  const [geminiData, setGeminiData] = useState<GeminiEvaluationData | null>(null);
 
   // Customer Queue Filters
   const [searchTerm, setSearchTerm] = useState<string>("");
@@ -56,7 +59,8 @@ export function App() {
       fetchRazorpayProof(),
       fetchExceptions(),
       fetchFailureScenarios(),
-    ]).then(([sumRes, custRes, benchRes, proofRes, excRes, failRes]) => {
+      fetchGeminiEvaluation(),
+    ]).then(([sumRes, custRes, benchRes, proofRes, excRes, failRes, gemRes]) => {
       if (!active) return;
 
       if (sumRes.status === "fulfilled") setSummary(sumRes.value);
@@ -65,6 +69,7 @@ export function App() {
       if (proofRes.status === "fulfilled") setRazorpayProof(proofRes.value);
       if (excRes.status === "fulfilled") setExceptionsData(excRes.value);
       if (failRes.status === "fulfilled") setFailureScenarios(failRes.value);
+      if (gemRes.status === "fulfilled") setGeminiData(gemRes.value);
 
       if (sumRes.status === "rejected" || custRes.status === "rejected") {
         setError("Failed to connect to REVIVE Operational API. Please ensure backend server is running.");
@@ -156,7 +161,7 @@ export function App() {
       <header className="header-bar">
         <div>
           <div className="brand-title">
-            REVIVE <span className="brand-badge">PROD API</span>
+            REVIVE <span className="brand-badge">API</span>
           </div>
           <div className="header-subtitle">AI REVENUE RECOVERY COMMAND CENTER & EVIDENCE SUITE</div>
         </div>
@@ -199,6 +204,13 @@ export function App() {
           onClick={() => setActiveTab("proof")}
         >
           💳 PHASE A RAZORPAY TEST PROOF
+        </button>
+        <button
+          type="button"
+          className={`tab-btn ${activeTab === "gemini" ? "active" : ""}`}
+          onClick={() => setActiveTab("gemini")}
+        >
+          🤖 PHASE D GEMINI AI EVIDENCE
         </button>
         <button
           type="button"
@@ -882,6 +894,726 @@ export function App() {
           )}
         </section>
       )}
+
+      {/* TAB: GEMINI AI EVALUATION & EVIDENCE */}
+      {activeTab === "gemini" && (
+        <section className="gemini-view">
+          {!geminiData ? (
+            <div className="error-card">
+              <div className="error-title">GEMINI EVALUATION DATA UNAVAILABLE</div>
+              <div className="text-secondary text-sm">Failed to connect to Phase D evaluation endpoint.</div>
+            </div>
+          ) : geminiData.demonstration_case ? (
+            /* PHASE D v3: SELECTIVE REAL GEMINI DIAGNOSIS DEMONSTRATION */
+            <div className="card">
+              {/* STATUS & PROVENANCE HEADER */}
+              <div className="gemini-header">
+                <div>
+                  <div className="drawer-tag">REVIVE PHASE D v3 — SELECTIVE AI DIAGNOSIS INTELLIGENCE</div>
+                  <h2 className="section-title text-xl mt-1">Selective Real Gemini Diagnosis Demonstration</h2>
+                  <div className="provenance-note mt-1 text-sm text-secondary">
+                    Demonstration Case: <strong>Controlled Ambiguous Journey ({geminiData.demonstration_case.customer_id})</strong>
+                    <span className="provenance-alert"> (Selective AI Review — Gemini invoked ONLY on multi-signal ambiguity)</span>
+                  </div>
+                </div>
+
+                <div className="status-badge-container">
+                  <span
+                    className={`badge status-${
+                      (geminiData.status || geminiData.demonstration_case.gemini_response.status).includes("REAL")
+                        ? "success"
+                        : (geminiData.status || geminiData.demonstration_case.gemini_response.status).includes("FALLBACK")
+                        ? "info"
+                        : "danger"
+                    }`}
+                    style={{ fontSize: "0.85rem", padding: "0.4rem 0.8rem", fontWeight: "bold" }}
+                  >
+                    {geminiData.status || geminiData.demonstration_case.gemini_response.status}
+                  </span>
+                </div>
+              </div>
+
+              {/* AUDIT METADATA STRIP */}
+              <div className="detail-grid mt-3">
+                <div className="detail-box">
+                  <div className="detail-label">MODEL IDENTIFIER</div>
+                  <div className="detail-value font-mono font-bold text-cyan">
+                    {geminiData.demonstration_case.gemini_response.model || geminiData.model || "gemini-2.5-flash"}
+                  </div>
+                </div>
+                <div className="detail-box">
+                  <div className="detail-label">PROMPT VERSION</div>
+                  <div className="detail-value font-mono text-sm">{geminiData.prompt_version || "REVIVE_GEMINI_DIAGNOSIS_PROMPT_V3"}</div>
+                </div>
+                <div className="detail-box">
+                  <div className="detail-label">EVIDENCE VERSION</div>
+                  <div className="detail-value font-mono text-sm">{geminiData.evidence_version || "3.0.0"}</div>
+                </div>
+                <div className="detail-box">
+                  <div className="detail-label">SOURCE ARTIFACT</div>
+                  <div className="detail-value font-mono text-xs">{geminiData.source_artifact}</div>
+                </div>
+              </div>
+
+              {/* 1. ROUTING DECISION CARD */}
+              <div className="card mt-4" style={{ background: "rgba(99, 102, 241, 0.05)", borderColor: "rgba(99, 102, 241, 0.3)" }}>
+                <div className="flex justify-between items-center">
+                  <div className="section-title text-indigo-400">1. DETERMINISTIC ROUTING DECISION (AI REVIEW ROUTER)</div>
+                  <span className="badge badge-primary font-mono font-bold">{geminiData.demonstration_case.routing_mode}</span>
+                </div>
+                <div className="grid-2-col mt-2">
+                  <div>
+                    <div className="text-xs text-secondary font-mono">TRIGGER IDENTIFIER:</div>
+                    <div className="text-sm font-bold font-mono text-cyan mt-1">{geminiData.demonstration_case.trigger_id}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-secondary font-mono">CUSTOMER CASE:</div>
+                    <div className="text-sm font-bold font-mono text-white mt-1">{geminiData.demonstration_case.customer_id}</div>
+                  </div>
+                </div>
+                <div className="mt-3 p-2 rounded" style={{ background: "rgba(0,0,0,0.3)", borderLeft: "3px solid #6366f1" }}>
+                  <div className="text-xs text-secondary font-mono mb-1">ROUTING RATIONALE (WHY DETERMINISTIC POLICY DELEGATED TO AI):</div>
+                  <div className="text-sm text-slate-200">{geminiData.demonstration_case.routing_reason}</div>
+                </div>
+              </div>
+
+              {/* 2. OBSERVABLE CUSTOMER EVIDENCE */}
+              <div className="card mt-3" style={{ background: "rgba(255,255,255,0.02)" }}>
+                <div className="section-title">2. OBSERVABLE CUSTOMER EVIDENCE (GROUNDED INPUT)</div>
+                <div className="detail-grid mt-2">
+                  <div className="detail-box">
+                    <div className="detail-label">RISK SCORE & TIER</div>
+                    <div className="detail-value font-mono font-bold text-amber">
+                      {(geminiData.demonstration_case.observable_signal_summary.risk_score * 100).toFixed(1)}% ({geminiData.demonstration_case.observable_signal_summary.risk_tier})
+                    </div>
+                  </div>
+                  <div className="detail-box">
+                    <div className="detail-label">SUBSCRIPTION PLAN</div>
+                    <div className="detail-value font-mono">{geminiData.demonstration_case.observable_signal_summary.plan}</div>
+                  </div>
+                  <div className="detail-box">
+                    <div className="detail-label">LIFETIME USAGE</div>
+                    <div className="detail-value font-mono text-cyan">
+                      {geminiData.demonstration_case.observable_signal_summary.feature_uses} Features • {geminiData.demonstration_case.observable_signal_summary.sessions} Sessions
+                    </div>
+                  </div>
+                  <div className="detail-box">
+                    <div className="detail-label">COMMERCIAL SIGNALS</div>
+                    <div className="detail-value font-mono text-purple-400">
+                      {geminiData.demonstration_case.observable_signal_summary.pricing_page_views} Pricing Views • {geminiData.demonstration_case.observable_signal_summary.checkout_starts} Checkouts
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-3">
+                  <div className="text-xs text-secondary font-mono mb-1">ACTIVE OBSERVABLE SIGNALS:</div>
+                  <div className="flex flex-wrap gap-2">
+                    {geminiData.demonstration_case.observable_signal_summary.observable_signals.map((sig, sIdx) => (
+                      <span key={sIdx} className="badge badge-muted font-mono" style={{ marginRight: "6px", marginBottom: "4px" }}>
+                        {sig}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. REAL GEMINI RESPONSE */}
+              <div
+                className="card mt-3"
+                style={{
+                  background:
+                    geminiData.demonstration_case.gemini_response.status === "REAL_GEMINI"
+                      ? "rgba(16, 185, 129, 0.05)"
+                      : "rgba(239, 68, 68, 0.05)",
+                  borderColor:
+                    geminiData.demonstration_case.gemini_response.status === "REAL_GEMINI"
+                      ? "rgba(16, 185, 129, 0.3)"
+                      : "rgba(239, 68, 68, 0.3)",
+                }}
+              >
+                <div className="flex justify-between items-center">
+                  <div
+                    className={`section-title ${
+                      geminiData.demonstration_case.gemini_response.status === "REAL_GEMINI"
+                        ? "text-emerald-400"
+                        : "text-rose"
+                    }`}
+                  >
+                    3. REAL GEMINI DIAGNOSIS INTELLIGENCE
+                  </div>
+                  <div className="text-xs font-mono text-secondary">
+                    Latency: {geminiData.demonstration_case.gemini_response.latency_ms?.toFixed(0) || "0"} ms
+                  </div>
+                </div>
+                <div className="detail-grid mt-2">
+                  <div className="detail-box">
+                    <div className="detail-label">CALL STATUS</div>
+                    <div
+                      className={`detail-value font-mono font-bold ${
+                        geminiData.demonstration_case.gemini_response.status === "REAL_GEMINI"
+                          ? "text-emerald-300"
+                          : "text-rose"
+                      }`}
+                    >
+                      {geminiData.demonstration_case.gemini_response.status}
+                    </div>
+                  </div>
+                  <div className="detail-box">
+                    <div className="detail-label">PROPOSED DIAGNOSIS</div>
+                    <div className="detail-value font-mono font-bold text-success text-base">
+                      {geminiData.demonstration_case.gemini_response.diagnosis || "Unavailable"}
+                    </div>
+                  </div>
+                  <div className="detail-box">
+                    <div className="detail-label">CONFIDENCE SCORE</div>
+                    <div className="detail-value font-mono font-bold text-cyan">
+                      {geminiData.demonstration_case.gemini_response.confidence !== null &&
+                      geminiData.demonstration_case.gemini_response.confidence !== undefined
+                        ? `${(geminiData.demonstration_case.gemini_response.confidence * 100).toFixed(0)}%`
+                        : "N/A"}
+                    </div>
+                  </div>
+                  <div className="detail-box">
+                    <div className="detail-label">GEMINI ACTIONABILITY</div>
+                    <div className="detail-value font-mono font-bold text-purple-400">
+                      {geminiData.demonstration_case.gemini_response.status === "REAL_GEMINI"
+                        ? geminiData.demonstration_case.gemini_response.actionability || "CANDIDATE"
+                        : "N/A"}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Provider Error & Validation details when call did not succeed with REAL_GEMINI */}
+                {geminiData.demonstration_case.gemini_response.status !== "REAL_GEMINI" && (
+                  <div
+                    className="mt-3 p-3 rounded"
+                    style={{ background: "rgba(0,0,0,0.4)", borderLeft: "3px solid #ef4444" }}
+                  >
+                    {geminiData.demonstration_case.gemini_response.error_type && (
+                      <div className="text-xs text-rose font-mono mb-1">
+                        ERROR TYPE:{" "}
+                        <span className="text-slate-200">
+                          {geminiData.demonstration_case.gemini_response.error_type}
+                        </span>
+                      </div>
+                    )}
+                    {geminiData.demonstration_case.gemini_response.error_message && (
+                      <div className="text-xs text-secondary font-mono mb-1">
+                        ERROR MESSAGE:{" "}
+                        <span className="text-slate-300">
+                          {geminiData.demonstration_case.gemini_response.error_message}
+                        </span>
+                      </div>
+                    )}
+                    {geminiData.demonstration_case.gemini_response.validation_error && (
+                      <div className="text-xs text-secondary font-mono mb-1">
+                        VALIDATION ERROR:{" "}
+                        <span className="text-slate-300">
+                          {geminiData.demonstration_case.gemini_response.validation_error}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {geminiData.demonstration_case.gemini_response.rationale && (
+                  <div className="mt-3 p-3 rounded" style={{ background: "rgba(0,0,0,0.3)", borderLeft: "3px solid #10b981" }}>
+                    <div className="text-xs text-secondary font-mono mb-1">OBSERVABLE RATIONALE:</div>
+                    <div className="text-sm text-slate-200" style={{ lineHeight: "1.5" }}>
+                      {geminiData.demonstration_case.gemini_response.rationale}
+                    </div>
+                  </div>
+                )}
+
+                {geminiData.demonstration_case.gemini_response.status === "REAL_GEMINI" && (
+                  <div className="mt-3 grid-2-col">
+                    <div>
+                      <div className="text-xs text-secondary font-mono mb-1">EVIDENCE ITEMS GROUNDED:</div>
+                      <ul className="text-xs text-slate-300 font-mono" style={{ paddingLeft: "1.2rem", margin: 0 }}>
+                        {geminiData.demonstration_case.gemini_response.evidence_used?.map((ev, eIdx) => (
+                          <li key={eIdx}>{ev}</li>
+                        )) || <li>None</li>}
+                      </ul>
+                    </div>
+                    <div>
+                      <div className="text-xs text-secondary font-mono mb-1">REPORTED UNCERTAINTY / BOUNDS:</div>
+                      <div className="text-xs text-slate-400 font-mono">
+                        {geminiData.demonstration_case.gemini_response.uncertainty_notes || "None reported. Diagnosis grounded in clear pricing view evidence."}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+
+              {/* 4. GOVERNANCE & SAFETY CONTAINMENT */}
+              <div className="card mt-3">
+                <div className="section-title">4. GOVERNANCE & SAFETY CONTAINMENT</div>
+                <div className="grid-2-col mt-2">
+                  <div className="detail-box">
+                    <div className="detail-label">SAFETY BOUNDARY CHECKS</div>
+                    <div className="breakdown-list mt-2">
+                      <div className="breakdown-item">
+                        <span className="breakdown-label">Execution Authority:</span>
+                        <span className="breakdown-val font-mono text-cyan font-bold">
+                          {geminiData.demonstration_case.governance_result.execution_authority}
+                        </span>
+                      </div>
+                      <div className="breakdown-item">
+                        <span className="breakdown-label">Execution Bypass Detected:</span>
+                        <span className="breakdown-val font-mono text-success font-bold">
+                          {geminiData.demonstration_case.governance_result.execution_bypass_detected ? "YES (VIOLATION)" : "NO (0 Observed)"}
+                        </span>
+                      </div>
+                      <div className="breakdown-item">
+                        <span className="breakdown-label">Unsupported Action Claim:</span>
+                        <span className="breakdown-val font-mono text-success font-bold">
+                          {geminiData.demonstration_case.governance_result.unsupported_action_claim_detected ? "YES (VIOLATION)" : "NO (0 Observed)"}
+                        </span>
+                      </div>
+                      <div className="breakdown-item">
+                        <span className="breakdown-label">Policy Guard Violation:</span>
+                        <span className="breakdown-val font-mono text-success font-bold">
+                          {geminiData.demonstration_case.governance_result.policy_guard_violation_detected ? "YES (VIOLATION)" : "NO (0 Observed)"}
+                        </span>
+                      </div>
+                      <div className="breakdown-item">
+                        <span className="breakdown-label">Mandatory Policy Gating:</span>
+                        <span className="breakdown-val font-mono text-success font-bold">
+                          {geminiData.demonstration_case.governance_result.policy_gating_applied ? "APPLIED ✓" : "NOT APPLIED"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="detail-box">
+                    <div className="detail-label">GOVERNANCE PRINCIPLE VERIFICATION</div>
+                    <div className="text-sm mt-2 text-secondary" style={{ lineHeight: "1.6" }}>
+                      <strong>"AI Proposes; Deterministic Policy Authorizes; Guarded Execution Acts."</strong>
+                      <p className="mt-1">
+                        Gemini cannot trigger outreach, refund revenue, dispatch payment links, or override business guardrails.
+                        All proposals are handed off to REVIVE deterministic policy gates.
+                      </p>
+                      <div className="mt-2 text-xs font-mono text-success font-bold">
+                        Verdict: {geminiData.demonstration_case.governance_result.governance_verdict}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 5. DETERMINISTIC POLICY DECISION & EXECUTION AUTHORITY */}
+              <div className="card mt-3" style={{ background: "rgba(59, 130, 246, 0.05)", borderColor: "rgba(59, 130, 246, 0.3)" }}>
+                <div className="section-title text-blue-400">5. DETERMINISTIC POLICY DECISION (InterventionEngine)</div>
+                <div className="detail-grid mt-2">
+                  <div className="detail-box">
+                    <div className="detail-label">POLICY VERSION</div>
+                    <div className="detail-value font-mono">{geminiData.demonstration_case.policy_result.policy_version}</div>
+                  </div>
+                  <div className="detail-box">
+                    <div className="detail-label">ELIGIBILITY STATUS</div>
+                    <div className="detail-value font-mono font-bold text-success">
+                      {geminiData.demonstration_case.policy_result.eligibility_status}
+                    </div>
+                  </div>
+                  <div className="detail-box">
+                    <div className="detail-label">SELECTED INTERVENTION ACTION</div>
+                    <div className="detail-value font-mono font-bold text-cyan">
+                      {geminiData.demonstration_case.policy_result.selected_action}
+                    </div>
+                  </div>
+                  <div className="detail-box">
+                    <div className="detail-label">EXPECTED RECOVERY VALUE</div>
+                    <div className="detail-value font-mono font-bold text-emerald-400">
+                      {formatINR(geminiData.demonstration_case.policy_result.expected_value)}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-3 p-2 rounded" style={{ background: "rgba(0,0,0,0.3)", borderLeft: "3px solid #3b82f6" }}>
+                  <div className="text-xs text-secondary font-mono mb-1">GOVERNED DECISION SUMMARY:</div>
+                  <div className="text-sm text-slate-200">{geminiData.demonstration_case.policy_result.governed_decision_summary}</div>
+                </div>
+
+                <div className="mt-3 grid-2-col">
+                  <div className="detail-box">
+                    <div className="detail-label">EXECUTION AUTHORITY HELD BY</div>
+                    <div className="detail-value font-mono text-sm text-white">
+                      {geminiData.demonstration_case.execution_authority_result.authority_held_by}
+                    </div>
+                  </div>
+                  <div className="detail-box">
+                    <div className="detail-label">GUARDED EXECUTION STATUS</div>
+                    <div className="detail-value font-mono text-sm text-success font-bold">
+                      {geminiData.demonstration_case.execution_authority_result.guarded_execution_status}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 6. TOKEN USAGE & COST ACCOUNTING */}
+              <div className="card mt-3">
+                <div className="section-title">6. TOKEN USAGE & COST ACCOUNTING</div>
+                <div className="grid-2-col mt-2">
+                  <div className="detail-box">
+                    <div className="detail-label">TOKEN CONSUMPTION (PROVIDER REPORTED)</div>
+                    <div className="breakdown-list mt-2">
+                      <div className="breakdown-item">
+                        <span className="breakdown-label">Prompt Tokens:</span>
+                        <span className="breakdown-val font-mono">{geminiData.demonstration_case.cost_accounting?.prompt_tokens ?? "N/A"}</span>
+                      </div>
+                      <div className="breakdown-item">
+                        <span className="breakdown-label">Candidate Output Tokens:</span>
+                        <span className="breakdown-val font-mono">{geminiData.demonstration_case.cost_accounting?.candidates_tokens ?? "N/A"}</span>
+                      </div>
+                      <div className="breakdown-item">
+                        <span className="breakdown-label">Total Tokens:</span>
+                        <span className="breakdown-val font-mono font-bold text-cyan">{geminiData.demonstration_case.cost_accounting?.total_tokens ?? "N/A"}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="detail-box">
+                    <div className="detail-label">ESTIMATED COMMERCIAL COST</div>
+                    <div className="text-sm mt-2 text-secondary" style={{ lineHeight: "1.6" }}>
+                      <div>
+                        <strong>Estimated Cost:</strong>{" "}
+                        <span className="font-mono text-cyan font-bold">
+                          {geminiData.demonstration_case.cost_accounting?.estimated_cost_inr !== undefined &&
+                          geminiData.demonstration_case.cost_accounting?.estimated_cost_inr !== null
+                            ? `Rs. ${geminiData.demonstration_case.cost_accounting.estimated_cost_inr.toFixed(4)}`
+                            : "N/A — Pricing basis not configured"}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-xs">
+                        {geminiData.cost_accounting?.cost_basis_note ||
+                          "Real Gemini token counts recorded. Currency pricing is not fabricated."}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* HISTORICAL / BATCH EVALUATION CARD */
+            <div className="card">
+              {/* STATUS & PROVENANCE HEADER */}
+              <div className="gemini-header">
+                <div>
+                  <div className="drawer-tag">REVIVE PHASE D — AI INTELLIGENCE & EVALUATION</div>
+                  <h2 className="section-title text-xl mt-1">Google Gemini Real Diagnosis Evaluation</h2>
+                  <div className="provenance-note mt-1 text-sm text-secondary">
+                    Dataset: <strong>{(geminiData.metadata as Record<string, string>)?.dataset_name || "Phase D Gemini Evaluation Sample (100 customers, Seed 42)"}</strong>
+                    <span className="provenance-alert"> (Dedicated Phase D Evaluation Sample — NOT Phase B 10k Benchmark)</span>
+                  </div>
+                </div>
+
+                <div className="status-badge-container">
+                  <span
+                    className={`badge status-${
+                      geminiData.status.includes("REAL")
+                        ? "success"
+                        : geminiData.status.includes("FALLBACK")
+                        ? "info"
+                        : geminiData.status.includes("ERROR")
+                        ? "danger"
+                        : "warning"
+                    }`}
+                    style={{ fontSize: "0.85rem", padding: "0.4rem 0.8rem", fontWeight: "bold" }}
+                  >
+                    {geminiData.status}
+                  </span>
+                </div>
+              </div>
+
+              {/* AUDIT METADATA STRIP */}
+              <div className="detail-grid mt-3">
+                <div className="detail-box">
+                  <div className="detail-label">MODEL IDENTIFIER</div>
+                  <div className="detail-value font-mono font-bold text-cyan">{geminiData.model || "gemini-2.5-flash"}</div>
+                </div>
+                <div className="detail-box">
+                  <div className="detail-label">PROMPT VERSION</div>
+                  <div className="detail-value font-mono text-sm">{geminiData.prompt_version || "REVIVE_GEMINI_DIAGNOSIS_PROMPT_V1"}</div>
+                </div>
+                <div className="detail-box">
+                  <div className="detail-label">EVIDENCE VERSION</div>
+                  <div className="detail-value font-mono text-sm">{geminiData.evidence_version || "1.0.0"}</div>
+                </div>
+                <div className="detail-box">
+                  <div className="detail-label">SOURCE ARTIFACT</div>
+                  <div className="detail-value font-mono text-xs">{geminiData.source_artifact}</div>
+                </div>
+              </div>
+
+              {/* DIAGNOSTIC NOTICE IF UNAVAILABLE / ERROR */}
+              {geminiData.diagnostic_message && (
+                <div className="disclosure-banner mt-3">
+                  <strong>Evaluation Note:</strong> {geminiData.diagnostic_message}
+                </div>
+              )}
+
+              {/* OPERATIONAL RELIABILITY GRID */}
+              <div className="section-title mt-4">OPERATIONAL RELIABILITY & CALL RECONCILIATION</div>
+              <div className="kpi-grid mt-2">
+                <div className="kpi-card">
+                  <div className="kpi-title">ATTEMPTED EVALUATIONS</div>
+                  <div className="kpi-value">{geminiData.operational_metrics?.attempted_evaluations ?? 0}</div>
+                  <div className="kpi-subtext text-secondary">Controlled Customer Journeys</div>
+                </div>
+                <div className="kpi-card">
+                  <div className="kpi-title">REAL GEMINI SUCCESS</div>
+                  <div className="kpi-value text-success">{geminiData.operational_metrics?.successful_evaluations ?? 0}</div>
+                  <div className="kpi-subtext text-secondary">Success Rate: {geminiData.operational_metrics?.success_rate_pct ?? 0}%</div>
+                </div>
+                <div className="kpi-card">
+                  <div className="kpi-title">SCOREABLE EVALUATIONS</div>
+                  <div className="kpi-value text-cyan">{geminiData.operational_metrics?.scoreable_evaluations ?? 0}</div>
+                  <div className="kpi-subtext text-secondary">Observable Contract Grounded</div>
+                </div>
+                <div className="kpi-card">
+                  <div className="kpi-title">SCHEMA REJECTIONS</div>
+                  <div className="kpi-value text-amber">{geminiData.operational_metrics?.schema_rejections ?? 0}</div>
+                  <div className="kpi-subtext text-secondary">Malformed / Out-of-Bounds</div>
+                </div>
+                <div className="kpi-card">
+                  <div className="kpi-title">MODEL ERRORS & 429s</div>
+                  <div className="kpi-value text-rose">{geminiData.operational_metrics?.model_errors ?? 0}</div>
+                  <div className="kpi-subtext text-secondary">Retries: {geminiData.operational_metrics?.total_retries ?? 0}</div>
+                </div>
+                <div className="kpi-card">
+                  <div className="kpi-title">FALLBACK INVOCATIONS</div>
+                  <div className="kpi-value text-cyan">{geminiData.operational_metrics?.fallback_evaluations ?? 0}</div>
+                  <div className="kpi-subtext text-secondary">Phase 4 Baseline Engaged</div>
+                </div>
+              </div>
+
+              {/* RECONCILIATION BADGE */}
+              <div className="mt-2 text-sm text-secondary font-mono" style={{ background: "rgba(255,255,255,0.03)", padding: "0.6rem 1rem", borderRadius: "6px" }}>
+                <strong>Status Accounting:</strong> {geminiData.operational_metrics?.reconciliation_formula || "100% Terminal State Reconciliation"}
+                {" — "}
+                <span className={geminiData.operational_metrics?.reconciliation_passed ? "text-success font-bold" : "text-rose font-bold"}>
+                  {geminiData.operational_metrics?.reconciliation_passed ? "RECONCILED ✓" : "RECONCILIATION ERROR"}
+                </span>
+              </div>
+
+              {/* OBSERVABILITY METRICS */}
+              {geminiData.observability_metrics && (
+                <div className="card mt-3" style={{ background: "rgba(255,255,255,0.02)" }}>
+                  <div className="section-title">OBSERVABLE EVIDENCE CONTRACT & LABEL DISTRIBUTION</div>
+                  <div className="text-xs text-secondary mb-2">
+                    Scoreable Rate: <strong className="text-success">{geminiData.observability_metrics.scoreable_rate_pct}%</strong> ({geminiData.observability_metrics.scoreable_count} of {geminiData.observability_metrics.total_evaluated} journeys mapped to deterministic observable contracts).
+                  </div>
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {Object.entries(geminiData.observability_metrics.observable_label_distribution).map(([lbl, cnt]) => (
+                      <span key={lbl} className="badge badge-muted font-mono" style={{ marginRight: "6px", marginBottom: "4px" }}>
+                        {lbl}: <strong className="text-cyan">{cnt}</strong>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* GOVERNANCE & SAFETY CONTAINMENT */}
+              <div className="section-title mt-4">GOVERNANCE & SAFETY BOUNDARIES</div>
+              <div className="grid-2-col mt-2">
+                <div className="detail-box">
+                  <div className="detail-label">SAFETY & CONTAINMENT AUDIT</div>
+                  <div className="breakdown-list mt-2">
+                    <div className="breakdown-item">
+                      <span className="breakdown-label">Execution Bypass Attempts:</span>
+                      <span className="breakdown-val font-mono text-success font-bold">
+                        {geminiData.governance_metrics?.execution_bypass_attempts_observed ?? 0} (Zero Observed)
+                      </span>
+                    </div>
+                    <div className="breakdown-item">
+                      <span className="breakdown-label">Unsupported Action Claims:</span>
+                      <span className="breakdown-val font-mono text-success font-bold">
+                        {geminiData.governance_metrics?.unsupported_action_claims_observed ?? 0} (Zero Observed)
+                      </span>
+                    </div>
+                    <div className="breakdown-item">
+                      <span className="breakdown-label">Policy Guard Violations:</span>
+                      <span className="breakdown-val font-mono text-success font-bold">
+                        {geminiData.governance_metrics?.policy_guard_violations_observed ?? 0} (Zero Observed)
+                      </span>
+                    </div>
+                    <div className="breakdown-item">
+                      <span className="breakdown-label">Non-Compliant Records:</span>
+                      <span className="breakdown-val font-mono text-success font-bold">
+                        {geminiData.governance_metrics?.non_compliant_records_count ?? 0}
+                      </span>
+                    </div>
+                    <div className="breakdown-item">
+                      <span className="breakdown-label">Safety Compliance Rate:</span>
+                      <span className="breakdown-val font-mono text-success font-bold">
+                        {geminiData.governance_metrics?.safety_compliance_rate_pct ?? 100}%
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="detail-box">
+                  <div className="detail-label">GOVERNANCE PRINCIPLE VERIFICATION</div>
+                  <div className="text-sm mt-2 text-secondary" style={{ lineHeight: "1.6" }}>
+                    <strong>"Gemini Proposes Diagnosis Intelligence; REVIVE Retains Execution Authority."</strong>
+                    <p className="mt-1">
+                      Gemini output is constrained strictly to root-cause diagnosis candidate proposals.
+                      No model response can authorize payments, dispatch links, refund revenue, or override deterministic policy guards.
+                    </p>
+                    <div className="mt-2 text-xs font-mono text-success">
+                      Verdict: {geminiData.governance_metrics?.governance_verdict}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* MODEL QUALITY METRICS */}
+              <div className="section-title mt-4">DIAGNOSIS QUALITY EVALUATION (vs OBSERVABLE CONTRACT)</div>
+              {geminiData.quality_metrics?.available ? (
+                <div className="mt-2">
+                  <div className="kpi-grid">
+                    <div className="kpi-card">
+                      <div className="kpi-title">SCOREABLE DENOMINATOR</div>
+                      <div className="kpi-value text-cyan font-bold">
+                        {geminiData.quality_metrics.scoreable_denominator ?? 0}
+                      </div>
+                      <div className="kpi-subtext text-secondary">Real Gemini + Valid</div>
+                    </div>
+                    <div className="kpi-card">
+                      <div className="kpi-title">DIAGNOSIS ACCURACY</div>
+                      <div className="kpi-value text-success font-bold">
+                        {((geminiData.quality_metrics.diagnosis_accuracy || 0) * 100).toFixed(1)}%
+                      </div>
+                      <div className="kpi-subtext text-secondary">vs Observable Contract</div>
+                    </div>
+                    <div className="kpi-card">
+                      <div className="kpi-title">MACRO F1 SCORE</div>
+                      <div className="kpi-value text-cyan font-bold">
+                        {((geminiData.quality_metrics.macro_f1 || 0) * 100).toFixed(1)}%
+                      </div>
+                      <div className="kpi-subtext text-secondary">Balanced Across Categories</div>
+                    </div>
+                    <div className="kpi-card">
+                      <div className="kpi-title">MACRO PRECISION</div>
+                      <div className="kpi-value text-secondary font-bold">
+                        {((geminiData.quality_metrics.macro_precision || 0) * 100).toFixed(1)}%
+                      </div>
+                      <div className="kpi-subtext text-secondary">False Positive Control</div>
+                    </div>
+                    <div className="kpi-card">
+                      <div className="kpi-title">MACRO RECALL</div>
+                      <div className="kpi-value text-secondary font-bold">
+                        {((geminiData.quality_metrics.macro_recall || 0) * 100).toFixed(1)}%
+                      </div>
+                      <div className="kpi-subtext text-secondary">Cause Coverage Rate</div>
+                    </div>
+                  </div>
+
+                  {/* Per-Category Quality Table */}
+                  {Object.keys(geminiData.quality_metrics.per_category_metrics || {}).length > 0 && (
+                    <div className="table-responsive mt-3">
+                      <table className="table">
+                        <thead>
+                          <tr>
+                            <th>DIAGNOSIS CATEGORY</th>
+                            <th>SUPPORT (CASES)</th>
+                            <th>PRECISION</th>
+                            <th>RECALL</th>
+                            <th>F1 SCORE</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {Object.entries(geminiData.quality_metrics.per_category_metrics).map(([cat, m]) => (
+                            <tr key={cat}>
+                              <td className="font-bold">{cat}</td>
+                              <td className="font-mono">{m.support}</td>
+                              <td className="font-mono">{(m.precision * 100).toFixed(1)}%</td>
+                              <td className="font-mono">{(m.recall * 100).toFixed(1)}%</td>
+                              <td className="font-mono font-bold text-success">{(m.f1 * 100).toFixed(1)}%</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {/* Confusion Matrix Table */}
+                  {geminiData.quality_metrics.confusion_matrix && geminiData.quality_metrics.confusion_matrix_labels && (
+                    <div className="card mt-3">
+                      <div className="section-title text-sm">CONFUSION MATRIX (Actual Rows vs Predicted Columns)</div>
+                      <div className="table-responsive mt-2">
+                        <table className="table font-mono text-xs">
+                          <thead>
+                            <tr>
+                              <th>Actual \ Pred</th>
+                              {geminiData.quality_metrics.confusion_matrix_labels.map((lbl) => (
+                                <th key={lbl} style={{ fontSize: "10px" }}>{lbl}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {geminiData.quality_metrics.confusion_matrix.map((row, rIdx) => (
+                              <tr key={rIdx}>
+                                <td className="font-bold text-white">{geminiData.quality_metrics?.confusion_matrix_labels?.[rIdx]}</td>
+                                {row.map((cell, cIdx) => (
+                                  <td
+                                    key={cIdx}
+                                    className={rIdx === cIdx ? "text-success font-bold" : cell > 0 ? "text-amber" : "text-muted"}
+                                  >
+                                    {cell}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="disclosure-banner mt-2">
+                  <strong>Quality Metrics Basis:</strong> {geminiData.quality_metrics?.evaluation_basis || "Zero real Gemini responses received. Accuracy and F1 metrics are not fabricated."}
+                </div>
+              )}
+
+              {/* COST & USAGE PANEL */}
+              <div className="section-title mt-4">TOKEN USAGE & COST ACCOUNTING</div>
+              <div className="grid-2-col mt-2">
+                <div className="detail-box">
+                  <div className="detail-label">TOKEN CONSUMPTION (PROVIDER REPORTED)</div>
+                  <div className="breakdown-list mt-2">
+                    <div className="breakdown-item">
+                      <span className="breakdown-label">Prompt Tokens:</span>
+                      <span className="breakdown-val font-mono">{geminiData.cost_accounting?.prompt_tokens_sum ?? "Unavailable"}</span>
+                    </div>
+                    <div className="breakdown-item">
+                      <span className="breakdown-label">Candidate Output Tokens:</span>
+                      <span className="breakdown-val font-mono">{geminiData.cost_accounting?.candidates_tokens_sum ?? "Unavailable"}</span>
+                    </div>
+                    <div className="breakdown-item">
+                      <span className="breakdown-label">Total Tokens:</span>
+                      <span className="breakdown-val font-mono font-bold text-cyan">{geminiData.cost_accounting?.total_tokens_sum ?? "Unavailable"}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="detail-box">
+                  <div className="detail-label">COST ACCOUNTING INTEGRITY</div>
+                  <div className="text-sm mt-2 text-secondary" style={{ lineHeight: "1.6" }}>
+                    <div><strong>Accounting Status:</strong> <span className="font-mono text-cyan">{geminiData.cost_accounting?.cost_data_status}</span></div>
+                    <p className="mt-2 text-xs">
+                      {geminiData.cost_accounting?.cost_basis_note}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
+
 
       {/* TAB 4: EXCEPTIONS & GOVERNED NON-ACTIONS */}
       {activeTab === "exceptions" && (

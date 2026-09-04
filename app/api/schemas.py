@@ -461,3 +461,100 @@ class HealthCheckResponse(BaseModel):
 
     status: str = "ok"
     service: str = "revive-api"
+
+
+# ---------------------------------------------------------------------------
+# 8. Phase D Gemini Evaluation Response Models
+# ---------------------------------------------------------------------------
+
+class GeminiOperationalMetricsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    attempted_evaluations: int
+    successful_evaluations: int
+    schema_rejections: int
+    model_errors: int
+    unavailable_evaluations: int
+    fallback_evaluations: int
+    scoreable_evaluations: int = 0
+    not_scoreable_evaluations: int = 0
+    total_retries: int = 0
+    rate_limit_events: int = 0
+    success_rate_pct: float
+    average_latency_ms: float
+    p95_latency_ms: float
+    reconciliation_passed: bool
+    reconciliation_formula: str
+
+
+class GeminiQualityMetricsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    available: bool
+    evaluation_basis: str
+    scoreable_denominator: int = 0
+    diagnosis_accuracy: Optional[float] = None
+    macro_precision: Optional[float] = None
+    macro_recall: Optional[float] = None
+    macro_f1: Optional[float] = None
+    per_category_metrics: Dict[str, Dict[str, Any]] = {}
+    confusion_matrix: Optional[List[List[int]]] = None
+    confusion_matrix_labels: Optional[List[str]] = None
+
+
+class GeminiObservabilityMetricsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    total_evaluated: int
+    scoreable_count: int
+    unscoreable_count: int
+    scoreable_rate_pct: float
+    observable_label_distribution: Dict[str, int] = Field(default_factory=dict)
+    unscoreable_reasons_summary: Dict[str, int] = Field(default_factory=dict)
+
+
+class GeminiGovernanceMetricsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    execution_bypass_attempts_observed: int
+    unsupported_action_claims_observed: int
+    policy_guard_violations_observed: int
+    non_compliant_records_count: int = 0
+    safety_compliance_rate_pct: float
+    governance_verdict: str
+
+
+class GeminiCostAccountingResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    cost_data_status: str
+    prompt_tokens_sum: Optional[int] = None
+    candidates_tokens_sum: Optional[int] = None
+    total_tokens_sum: Optional[int] = None
+    estimated_cost_inr: Optional[float] = None
+    cost_basis_note: str
+
+
+class GeminiEvaluationResponse(BaseModel):
+    """Response envelope for Phase D Gemini evaluation endpoint."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    available: bool
+    status: str
+    diagnostic_message: Optional[str] = None
+    provenance: str = "PHASE D REAL GEMINI EVALUATION"
+    source_artifact: str = "docs/evidence/phase_d_gemini_evaluation.json"
+    metadata: Optional[Dict[str, Any]] = None
+    model: Optional[str] = None
+    prompt_version: Optional[str] = None
+    evidence_version: Optional[str] = None
+    phase_version: Optional[str] = None
+    operational_metrics: Optional[GeminiOperationalMetricsResponse] = None
+    quality_metrics: Optional[GeminiQualityMetricsResponse] = None
+    observability_metrics: Optional[GeminiObservabilityMetricsResponse] = None
+    governance_metrics: Optional[GeminiGovernanceMetricsResponse] = None
+    cost_accounting: Optional[GeminiCostAccountingResponse] = None
+    failure_summary: Optional[Dict[str, Any]] = None
+    sample_records: Optional[List[Dict[str, Any]]] = None
+    demonstration_case: Optional[Dict[str, Any]] = None

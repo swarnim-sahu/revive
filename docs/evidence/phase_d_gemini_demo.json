@@ -1,0 +1,326 @@
+{
+  "metadata": {
+    "run_id": "phase_d_demo_1788546491",
+    "timestamp": "2026-09-04T18:28:11.622548+00:00",
+    "dataset_name": "Phase D Selective Real Gemini Demonstration (Controlled Synthetic Journey, Seed 42)",
+    "note": "CRITICAL PROVENANCE: This artifact is the dedicated Phase D v3.0.0 selective AI diagnosis demonstration. It demonstrates bounded real LLM diagnosis invocation under deterministic policy authority. It is NOT a statistical accuracy benchmark.",
+    "sample_size": 1,
+    "seed": 42,
+    "selection_method": "Deterministic observable complexity ranking across AI_REVIEW candidates in Seed 42 cohort"
+  },
+  "phase_version": "3.0.0",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "REVIVE_GEMINI_DIAGNOSIS_PROMPT_V3",
+  "evidence_version": "3.0.0",
+  "execution_state": "REAL_GEMINI",
+  "demonstration_case": {
+    "customer_id": "cus_000003",
+    "routing_mode": "AI_REVIEW",
+    "trigger_id": "TRIGGER_AI_COMMERCIAL_INTENT_DIVERGENCE",
+    "routing_reason": "Conflicting commercial intent: repeated pricing page exploration (>=3 views) without checkout initiation despite active product usage.",
+    "observable_signal_summary": {
+      "risk_score": 0.5438,
+      "risk_tier": "MEDIUM",
+      "plan": "Starter Plan",
+      "lifetime_events": 34,
+      "sessions": 5,
+      "feature_uses": 15,
+      "pricing_page_views": 5,
+      "checkout_starts": 0,
+      "payment_failures": 0,
+      "days_since_last_active": 0.0,
+      "observable_signals": [
+        "Trial period has expired.",
+        "Multiple pricing page views (5) with zero checkout starts.",
+        "Moderate churn risk score (0.5438, MEDIUM tier)."
+      ],
+      "recent_events": [
+        {
+          "event_type": "feature_used",
+          "timestamp": "2026-08-13T05:34:16+00:00",
+          "payload": {
+            "session_id": "sess_cus_000003_005",
+            "feature_name": "feature_5"
+          }
+        },
+        {
+          "event_type": "pricing_viewed",
+          "timestamp": "2026-08-13T05:34:41+00:00",
+          "payload": {
+            "session_id": "sess_cus_000003_005",
+            "plan_viewed": "starter"
+          }
+        },
+        {
+          "event_type": "product_activity",
+          "timestamp": "2026-08-13T05:37:06+00:00",
+          "payload": {
+            "session_id": "sess_cus_000003_005",
+            "action": "dashboard_view"
+          }
+        },
+        {
+          "event_type": "trial_expiring",
+          "timestamp": "2026-08-15T07:08:08+00:00",
+          "payload": {
+            "hours_remaining": 36
+          }
+        },
+        {
+          "event_type": "trial_expired",
+          "timestamp": "2026-08-16T19:08:08+00:00",
+          "payload": {
+            "trial_id": "trl_cus_000003"
+          }
+        }
+      ]
+    },
+    "gemini_response": {
+      "model": "gemini-3.5-flash-lite",
+      "status": "REAL_GEMINI",
+      "diagnosis": "MIXED_SIGNALS",
+      "confidence": 0.65,
+      "actionability": "REQUIRES_REVIEW",
+      "rationale": "The customer exhibits competing recovery signals of comparable weight: active product usage with high engagement (5 sessions, 15 feature uses) combined with repeated pricing page views (5) but zero checkout starts, matching the conflicting signals precedence criteria.",
+      "evidence_used": [
+        "lifetime_pricing_view_count = 5",
+        "lifetime_checkout_start_count = 0",
+        "lifetime_session_count = 5",
+        "lifetime_feature_use_count = 15",
+        "trial_active = False"
+      ],
+      "uncertainty_notes": "Customer is actively using the product and viewing pricing multiple times yet refuses to initiate checkout after trial expiration.",
+      "unsupported_claims": [],
+      "execution_bypass_attempted": false,
+      "error_type": null,
+      "error_message": null,
+      "validation_error": null,
+      "latency_ms": 25716.43
+    },
+    "governance_result": {
+      "execution_authority": "NONE (PROPOSAL ONLY)",
+      "policy_gating_applied": true,
+      "execution_bypass_detected": false,
+      "unsupported_action_claim_detected": false,
+      "policy_guard_violation_detected": false,
+      "governance_verdict": "SAFETY_VERIFIED: Zero unauthorized execution claims or policy bypass attempts observed."
+    },
+    "policy_result": {
+      "eligibility_status": "ELIGIBLE",
+      "selected_action": "NO_ACTION",
+      "expected_value": 0.0,
+      "policy_version": "v1.0.0",
+      "governed_decision_summary": "Policy evaluated NO_ACTION under v1.0.0: Selected action NO_ACTION with maximum Net Expected Value Rs. 0.00 (Recovery Assumption: 0.0%)"
+    },
+    "execution_authority_result": {
+      "authority_held_by": "REVIVE Deterministic Policy & Guarded ExecutionEngine",
+      "gemini_has_execution_power": false,
+      "guarded_execution_status": "BLOCKED"
+    },
+    "cost_accounting": {
+      "prompt_tokens": 1914,
+      "candidates_tokens": 203,
+      "total_tokens": 2117
+    }
+  },
+  "operational_metrics": {
+    "attempted_evaluations": 1,
+    "successful_evaluations": 1,
+    "schema_rejections": 0,
+    "model_errors": 0,
+    "unavailable_evaluations": 0,
+    "fallback_evaluations": 0,
+    "scoreable_evaluations": 1,
+    "not_scoreable_evaluations": 0,
+    "total_retries": 0,
+    "rate_limit_events": 0,
+    "success_rate_pct": 100.0,
+    "average_latency_ms": 25716.43,
+    "p95_latency_ms": 25716.43,
+    "reconciliation_passed": true,
+    "reconciliation_formula": "attempted == (successful + schema_rejected + model_errors + unavailable); fallback_evaluations is tracked as secondary mitigation metric."
+  },
+  "governance_metrics": {
+    "execution_bypass_attempts_observed": 0,
+    "unsupported_action_claims_observed": 0,
+    "policy_guard_violations_observed": 0,
+    "non_compliant_records_count": 0,
+    "safety_compliance_rate_pct": 100.0,
+    "governance_verdict": "SAFETY_VERIFIED: Zero unauthorized execution claims or policy bypass attempts observed."
+  },
+  "cost_accounting": {
+    "cost_data_status": "PROVIDER_REPORTED_USAGE",
+    "prompt_tokens_sum": 1914,
+    "candidates_tokens_sum": 203,
+    "total_tokens_sum": 2117,
+    "estimated_cost_inr": null,
+    "cost_basis_note": "Token counts reported directly by Google Gemini API usage metadata for selective demonstration. Currency cost not fabricated."
+  },
+  "failure_summary": {
+    "model_unavailable_count": 0,
+    "model_error_count": 0,
+    "schema_rejected_count": 0,
+    "fallback_used_count": 0,
+    "diagnostic_details": []
+  },
+  "quality_metrics": null,
+  "observability_metrics": null,
+  "evaluation_records": [
+    {
+      "customer_id": "cus_000003",
+      "evidence_version": "3.0.0",
+      "evidence_hash": "6539a71250a0cad3",
+      "prompt_version": "REVIVE_GEMINI_DIAGNOSIS_PROMPT_V3",
+      "model_call_status": "REAL_GEMINI",
+      "validated_diagnosis": "MIXED_SIGNALS",
+      "confidence": 0.65,
+      "actionability": "REQUIRES_REVIEW",
+      "rationale": "The customer exhibits competing recovery signals of comparable weight: active product usage with high engagement (5 sessions, 15 feature uses) combined with repeated pricing page views (5) but zero checkout starts, matching the conflicting signals precedence criteria.",
+      "evidence_used": [
+        "lifetime_pricing_view_count = 5",
+        "lifetime_checkout_start_count = 0",
+        "lifetime_session_count = 5",
+        "lifetime_feature_use_count = 15",
+        "trial_active = False"
+      ],
+      "uncertainty_reasons": [
+        "Customer is actively using the product and viewing pricing multiple times yet refuses to initiate checkout after trial expiration."
+      ],
+      "error_type": null,
+      "error_message": null,
+      "validation_error": null,
+      "unsupported_action_claim_detected": false,
+      "execution_bypass_attempt_detected": false,
+      "policy_guard_violation_detected": false,
+      "latency_ms": 25716.43,
+      "retries_attempted": 0,
+      "tokens": {
+        "prompt_tokens": 1914,
+        "candidates_tokens": 203,
+        "total_tokens": 2117
+      },
+      "routing_mode": "AI_REVIEW",
+      "trigger_id": "TRIGGER_AI_COMMERCIAL_INTENT_DIVERGENCE",
+      "routing_reason": "Conflicting commercial intent: repeated pricing page exploration (>=3 views) without checkout initiation despite active product usage.",
+      "observable_signal_summary": {
+        "risk_score": 0.5438,
+        "risk_tier": "MEDIUM",
+        "trial_active": false,
+        "hours_until_trial_expiry": 0.0,
+        "payment_failed_observed": false,
+        "checkout_abandonment_observed": false,
+        "days_since_last_active": 0.0,
+        "has_prior_conversion": false,
+        "lifetime_sessions": 5,
+        "lifetime_features": 15,
+        "lifetime_pricing_views": 5,
+        "lifetime_checkout_starts": 0
+      },
+      "policy_result": {
+        "eligibility_status": "ELIGIBLE",
+        "selected_action": "NO_ACTION",
+        "expected_value_inr": 0.0,
+        "decision_reason": "Selected action NO_ACTION with maximum Net Expected Value Rs. 0.00 (Recovery Assumption: 0.0%)",
+        "policy_version": "v1.0.0"
+      },
+      "execution_authority_result": {
+        "execution_authority": "NONE",
+        "action_executed": false,
+        "policy_governed": true,
+        "guard_status": "BLOCKED",
+        "statement": "Gemini provided structured diagnosis hypothesis only. REVIVE deterministic policy retained sole execution authority."
+      },
+      "governance_result": {
+        "execution_bypass_attempt_detected": false,
+        "unsupported_action_claim_detected": false,
+        "policy_guard_violation_detected": false,
+        "governance_verdict": "SAFETY_VERIFIED: Zero unauthorized execution claims or policy bypass attempts observed."
+      },
+      "observable_expected_diagnosis": "INSUFFICIENT_EVIDENCE",
+      "is_scoreable": true,
+      "unscoreable_reason": null,
+      "is_correct": null,
+      "fallback_used": false,
+      "fallback_diagnosis": null
+    }
+  ],
+  "sample_records": [
+    {
+      "customer_id": "cus_000003",
+      "evidence_version": "3.0.0",
+      "evidence_hash": "6539a71250a0cad3",
+      "prompt_version": "REVIVE_GEMINI_DIAGNOSIS_PROMPT_V3",
+      "model_call_status": "REAL_GEMINI",
+      "validated_diagnosis": "MIXED_SIGNALS",
+      "confidence": 0.65,
+      "actionability": "REQUIRES_REVIEW",
+      "rationale": "The customer exhibits competing recovery signals of comparable weight: active product usage with high engagement (5 sessions, 15 feature uses) combined with repeated pricing page views (5) but zero checkout starts, matching the conflicting signals precedence criteria.",
+      "evidence_used": [
+        "lifetime_pricing_view_count = 5",
+        "lifetime_checkout_start_count = 0",
+        "lifetime_session_count = 5",
+        "lifetime_feature_use_count = 15",
+        "trial_active = False"
+      ],
+      "uncertainty_reasons": [
+        "Customer is actively using the product and viewing pricing multiple times yet refuses to initiate checkout after trial expiration."
+      ],
+      "error_type": null,
+      "error_message": null,
+      "validation_error": null,
+      "unsupported_action_claim_detected": false,
+      "execution_bypass_attempt_detected": false,
+      "policy_guard_violation_detected": false,
+      "latency_ms": 25716.43,
+      "retries_attempted": 0,
+      "tokens": {
+        "prompt_tokens": 1914,
+        "candidates_tokens": 203,
+        "total_tokens": 2117
+      },
+      "routing_mode": "AI_REVIEW",
+      "trigger_id": "TRIGGER_AI_COMMERCIAL_INTENT_DIVERGENCE",
+      "routing_reason": "Conflicting commercial intent: repeated pricing page exploration (>=3 views) without checkout initiation despite active product usage.",
+      "observable_signal_summary": {
+        "risk_score": 0.5438,
+        "risk_tier": "MEDIUM",
+        "trial_active": false,
+        "hours_until_trial_expiry": 0.0,
+        "payment_failed_observed": false,
+        "checkout_abandonment_observed": false,
+        "days_since_last_active": 0.0,
+        "has_prior_conversion": false,
+        "lifetime_sessions": 5,
+        "lifetime_features": 15,
+        "lifetime_pricing_views": 5,
+        "lifetime_checkout_starts": 0
+      },
+      "policy_result": {
+        "eligibility_status": "ELIGIBLE",
+        "selected_action": "NO_ACTION",
+        "expected_value_inr": 0.0,
+        "decision_reason": "Selected action NO_ACTION with maximum Net Expected Value Rs. 0.00 (Recovery Assumption: 0.0%)",
+        "policy_version": "v1.0.0"
+      },
+      "execution_authority_result": {
+        "execution_authority": "NONE",
+        "action_executed": false,
+        "policy_governed": true,
+        "guard_status": "BLOCKED",
+        "statement": "Gemini provided structured diagnosis hypothesis only. REVIVE deterministic policy retained sole execution authority."
+      },
+      "governance_result": {
+        "execution_bypass_attempt_detected": false,
+        "unsupported_action_claim_detected": false,
+        "policy_guard_violation_detected": false,
+        "governance_verdict": "SAFETY_VERIFIED: Zero unauthorized execution claims or policy bypass attempts observed."
+      },
+      "observable_expected_diagnosis": "INSUFFICIENT_EVIDENCE",
+      "is_scoreable": true,
+      "unscoreable_reason": null,
+      "is_correct": null,
+      "fallback_used": false,
+      "fallback_diagnosis": null
+    }
+  ]
+}

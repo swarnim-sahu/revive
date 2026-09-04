@@ -43,6 +43,7 @@ from app.api.schemas import (
     PolicySummary,
     RazorpayProofResponse,
     RiskSummary,
+    GeminiEvaluationResponse,
 )
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
@@ -51,6 +52,9 @@ router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _PHASE_B_EVIDENCE_PATH = _PROJECT_ROOT / "docs" / "evidence" / "phase_b_summary.json"
 _PHASE_A_PROOF_PATH = _PROJECT_ROOT / "docs" / "evidence" / "phase_a_razorpay_test_mode_proof.json"
+_PHASE_D_EVIDENCE_PATH = _PROJECT_ROOT / "docs" / "evidence" / "phase_d_gemini_evaluation.json"
+_DEFAULT_DEMO_PATH = _PROJECT_ROOT / "docs" / "evidence" / "phase_d_gemini_demo.json"
+
 
 # In-memory evaluation cache for operational batch benchmark stability and performance
 _cached_result: Optional[BatchEvaluationResult] = None
@@ -266,6 +270,72 @@ def get_dashboard_benchmark() -> BenchmarkResponse:
             available=False,
             diagnostic_message=f"Failed to parse benchmark evidence snapshot: {exc}",
             provenance="PHASE B BENCHMARK (Synthetic Controlled Evaluation)",
+            source_artifact=rel_path_str,
+        )
+
+
+@router.get("/gemini-evaluation", response_model=GeminiEvaluationResponse)
+def get_dashboard_gemini_evaluation() -> GeminiEvaluationResponse:
+    """
+    Return the authoritative Phase D real Gemini evaluation evidence snapshot.
+    Explicitly distinguishes REAL_GEMINI, MODEL_UNAVAILABLE, MODEL_ERROR, SCHEMA_REJECTED, and FALLBACK_USED.
+    """
+    target_path = _DEFAULT_DEMO_PATH if _DEFAULT_DEMO_PATH.exists() else _PHASE_D_EVIDENCE_PATH
+    rel_path_str = _get_relative_path(target_path)
+
+    if not target_path.exists():
+        return GeminiEvaluationResponse(
+            available=False,
+            status="GEMINI — UNAVAILABLE",
+            diagnostic_message="Phase D Gemini evaluation evidence artifact not found.",
+            provenance="PHASE D REAL GEMINI EVALUATION",
+            source_artifact=rel_path_str,
+        )
+
+    try:
+        with open(target_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        raw_state = data.get("execution_state", "REAL_GEMINI" if data.get("status") == "AVAILABLE" or data.get("available") is True else "MODEL_UNAVAILABLE")
+        if raw_state == "REAL_GEMINI":
+            status_label = "GEMINI — REAL DEMONSTRATION"
+        elif raw_state == "FALLBACK_USED":
+            status_label = "GEMINI — FALLBACK USED"
+        elif raw_state == "MODEL_ERROR":
+            status_label = "GEMINI — ERROR"
+        elif raw_state == "SCHEMA_REJECTED":
+            status_label = "GEMINI — SCHEMA REJECTED"
+        else:
+            status_label = "GEMINI — UNAVAILABLE"
+
+        is_available = raw_state in {"REAL_GEMINI", "PARTIAL_REAL_GEMINI"} or data.get("status") == "AVAILABLE" or data.get("available") is True
+
+        return GeminiEvaluationResponse(
+            available=is_available,
+            status=status_label,
+            diagnostic_message=None if is_available else f"Phase D evaluation completed in {raw_state} state.",
+            provenance=data.get("provenance", "PHASE D REAL GEMINI EVALUATION"),
+            source_artifact=rel_path_str,
+            metadata=data.get("metadata"),
+            model=data.get("model"),
+            prompt_version=data.get("prompt_version"),
+            evidence_version=data.get("evidence_version"),
+            phase_version=data.get("phase_version"),
+            operational_metrics=data.get("operational_metrics"),
+            quality_metrics=data.get("quality_metrics"),
+            observability_metrics=data.get("observability_metrics"),
+            governance_metrics=data.get("governance_metrics"),
+            cost_accounting=data.get("cost_accounting"),
+            failure_summary=data.get("failure_summary"),
+            sample_records=data.get("sample_records"),
+            demonstration_case=data.get("demonstration_case"),
+        )
+    except Exception as exc:
+        return GeminiEvaluationResponse(
+            available=False,
+            status="GEMINI — ERROR",
+            diagnostic_message=f"Failed to load or parse Phase D Gemini evaluation artifact: {exc}",
+            provenance="PHASE D REAL GEMINI EVALUATION",
             source_artifact=rel_path_str,
         )
 
@@ -867,3 +937,56 @@ def get_dashboard_failure_scenarios() -> List[FailureScenarioResponse]:
     )
 
     return [scen_1, scen_2]
+
+
+@router.get("/gemini-evaluation", response_model=GeminiEvaluationResponse)
+def get_dashboard_gemini_evaluation() -> GeminiEvaluationResponse:
+    """
+    Return Phase D Gemini evaluation / demonstration results from committed evidence artifact.
+    Prefers phase_d_gemini_demo.json (v3 selective demonstration), falling back to
+    phase_d_gemini_evaluation.json (historical v1/v2 benchmark) if demo is not yet generated.
+    """
+    evidence_path = _DEFAULT_DEMO_PATH if _DEFAULT_DEMO_PATH.exists() else _PHASE_D_EVIDENCE_PATH
+    try:
+        source_art = str(evidence_path.relative_to(_PROJECT_ROOT)).replace("\\", "/")
+    except Exception:
+        source_art = str(evidence_path).replace("\\", "/")
+
+    if not evidence_path.exists():
+        return GeminiEvaluationResponse(
+            available=False,
+            status="EVIDENCE_NOT_FOUND",
+            diagnostic_message=f"No Gemini evaluation or demonstration artifact found. Expected at '{evidence_path.name}'.",
+            provenance="PHASE D REAL GEMINI EVALUATION",
+            source_artifact=source_art,
+        )
+    try:
+        with open(evidence_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        return GeminiEvaluationResponse(
+            available=True,
+            status=data.get("status") or data.get("execution_state") or "AVAILABLE",
+            diagnostic_message=data.get("diagnostic_message"),
+            provenance=data.get("provenance", "PHASE D REAL GEMINI EVALUATION"),
+            source_artifact=data.get("source_artifact", source_art),
+            metadata=data.get("metadata"),
+            model=data.get("model"),
+            prompt_version=data.get("prompt_version"),
+            evidence_version=data.get("evidence_version"),
+            phase_version=data.get("phase_version"),
+            operational_metrics=data.get("operational_metrics"),
+            quality_metrics=data.get("quality_metrics"),
+            observability_metrics=data.get("observability_metrics"),
+            governance_metrics=data.get("governance_metrics"),
+            cost_accounting=data.get("cost_accounting"),
+            failure_summary=data.get("failure_summary"),
+            sample_records=data.get("sample_records"),
+            demonstration_case=data.get("demonstration_case"),
+        )
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to read Gemini evaluation artifact: {exc}",
+        )
