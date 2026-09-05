@@ -18,6 +18,7 @@ from enum import Enum
 import hashlib
 import hmac
 import json
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 from pydantic import BaseModel, ConfigDict, Field, field_validator, ValidationInfo
 
@@ -30,6 +31,15 @@ from app.execution.schemas import ExecutionAuditRecord
 from app.outcome.engine import OutcomeEngine
 from app.outcome.schemas import OutcomeRecord
 from app.integrations.razorpay.config import DEFAULT_RAZORPAY_CONFIG, RazorpayConfig
+from app.integrations.razorpay.persistence import (
+    DEFAULT_PHASE9_CONTEXT_PATH,
+    DEFAULT_PHASE9_ARTIFACT_PATH,
+    Phase9RuntimeContext,
+    load_phase9_runtime_context,
+    is_phase9_event_processed,
+    update_phase9_event_processed,
+    update_phase9_demo_artifact_on_recovery,
+)
 
 
 def _safe_dict(val: Any) -> Dict[str, Any]:
@@ -326,6 +336,8 @@ class RazorpayWebhookHandler:
         decision_store: Optional[Dict[str, InterventionDecision]] = None,
         decision_plan_store: Optional[Dict[str, Plan]] = None,
         customer_events_store: Optional[Dict[str, List[BaseEvent]]] = None,
+        context_path: Optional[Path] = None,
+        demo_artifact_path: Optional[Path] = None,
     ) -> None:
         self.config = config
         self.audit_logger = audit_logger or ExecutionAuditLogger()
@@ -334,6 +346,8 @@ class RazorpayWebhookHandler:
         self.decision_store: Dict[str, InterventionDecision] = decision_store if decision_store is not None else {}
         self.decision_plan_store: Dict[str, Plan] = decision_plan_store if decision_plan_store is not None else {}
         self.customer_events_store: Dict[str, List[BaseEvent]] = customer_events_store if customer_events_store is not None else {}
+        self.context_path = context_path
+        self.demo_artifact_path = demo_artifact_path
         self.processed_event_ids: Set[str] = set()
 
     def bind_decision(
@@ -411,9 +425,10 @@ class RazorpayWebhookHandler:
 
         event_type = payload_json.get("event", "unknown")
 
-        # 4. Webhook Delivery Idempotency Guard (In-memory successfully consumed X-Razorpay-Event-Id deduplication)
+        # 4. Webhook Delivery Idempotency Guard (In-memory + cross-process persistent deduplication)
         # Only already-successfully-consumed or terminally-ignored events are treated as duplicates.
-        if event_id in self.processed_event_ids:
+        if event_id in self.processed_event_ids or is_phase9_event_processed(event_id, path=self.context_path):
+            self.processed_event_ids.add(event_id)
             self.audit_store.log_webhook_event(
                 event_id=event_id,
                 event_type=event_type,
@@ -471,6 +486,19 @@ class RazorpayWebhookHandler:
                         matched_exec_record = rec
                         break
 
+                if not matched_exec_record:
+                    # Check persistent Phase 9 correlation projection
+                    p9_ctx = load_phase9_runtime_context(path=self.context_path)
+                    if p9_ctx and p9_ctx.payload_id == ref_clean:
+                        matched_exec_record = p9_ctx.get_execution_record()
+                        self.audit_logger._audit_store[matched_exec_record.execution_id] = matched_exec_record
+                        self.decision_store[matched_exec_record.decision_id] = p9_ctx.get_decision()
+                        self.decision_plan_store[matched_exec_record.decision_id] = p9_ctx.get_plan()
+                        if matched_exec_record.customer_id not in self.customer_events_store:
+                            self.customer_events_store[matched_exec_record.customer_id] = p9_ctx.get_customer_events()
+                        for peid in p9_ctx.processed_event_ids:
+                            self.processed_event_ids.add(peid)
+
             if not matched_exec_record:
                 # Processing failure: DO NOT mark as processed, allow subsequent retry
                 self.audit_store.log_webhook_event(
@@ -491,6 +519,11 @@ class RazorpayWebhookHandler:
             # 8. Decision Context Resolution Guard: Exact decision_id match ONLY.
             # Zero fallback to customer_id, payload_id, or synthetic generation.
             decision = self.decision_store.get(matched_exec_record.decision_id)
+            if not decision:
+                p9_ctx = load_phase9_runtime_context(path=self.context_path)
+                if p9_ctx and p9_ctx.decision_id == matched_exec_record.decision_id:
+                    decision = p9_ctx.get_decision()
+                    self.decision_store[matched_exec_record.decision_id] = decision
 
             if not decision:
                 # Processing failure: DO NOT mark as processed, allow subsequent retry
@@ -513,6 +546,11 @@ class RazorpayWebhookHandler:
             # 9. Plan Context Resolution Guard: Exact decision_id -> Plan match ONLY.
             # Zero fallback to 'pro', first available plan in store, or arbitrary defaults.
             plan = self.decision_plan_store.get(matched_exec_record.decision_id)
+            if not plan:
+                p9_ctx = load_phase9_runtime_context(path=self.context_path)
+                if p9_ctx and p9_ctx.decision_id == matched_exec_record.decision_id:
+                    plan = p9_ctx.get_plan()
+                    self.decision_plan_store[matched_exec_record.decision_id] = plan
 
             if not plan:
                 # Processing failure: DO NOT mark as processed, allow subsequent retry
@@ -583,6 +621,17 @@ class RazorpayWebhookHandler:
                 reason=f"Successfully measured outcome: {outcome_record.outcome.value} ({outcome_record.attribution_status.value})",
             )
 
+            # Synchronize persistent Phase 9 context and demonstration evidence artifact
+            p9_ctx = load_phase9_runtime_context(path=self.context_path)
+            if p9_ctx and (p9_ctx.payload_id == reference_id or p9_ctx.execution_id == matched_exec_record.execution_id):
+                update_phase9_demo_artifact_on_recovery(
+                    outcome_record=outcome_record,
+                    event_id=event_id,
+                    artifact_path=self.demo_artifact_path,
+                    context_path=self.context_path,
+                )
+                update_phase9_event_processed(event_id, path=self.context_path)
+
             return 200, {
                 "status": "processed",
                 "event_id": event_id,
@@ -627,11 +676,15 @@ class ReviveRuntimeContext:
         audit_logger: Optional[ExecutionAuditLogger] = None,
         outcome_engine: Optional[OutcomeEngine] = None,
         audit_store: Optional[WebhookAuditStore] = None,
+        context_path: Optional[Path] = None,
+        demo_artifact_path: Optional[Path] = None,
     ) -> None:
         self.config = config
         self.audit_logger = audit_logger or ExecutionAuditLogger()
         self.outcome_engine = outcome_engine or OutcomeEngine()
         self.audit_store = audit_store or WebhookAuditStore()
+        self.context_path = context_path
+        self.demo_artifact_path = demo_artifact_path
         self.decision_store: Dict[str, InterventionDecision] = {}
         self.decision_plan_store: Dict[str, Plan] = {}
         self.customer_events_store: Dict[str, List[BaseEvent]] = {}
@@ -643,7 +696,21 @@ class ReviveRuntimeContext:
             decision_store=self.decision_store,
             decision_plan_store=self.decision_plan_store,
             customer_events_store=self.customer_events_store,
+            context_path=self.context_path,
+            demo_artifact_path=self.demo_artifact_path,
         )
+
+        # Hydrate persisted Phase 9 correlation projection if present
+        p9_ctx = load_phase9_runtime_context(path=self.context_path)
+        if p9_ctx:
+            exec_rec = p9_ctx.get_execution_record()
+            self.audit_logger._audit_store[exec_rec.execution_id] = exec_rec
+            self.decision_store[exec_rec.decision_id] = p9_ctx.get_decision()
+            self.decision_plan_store[exec_rec.decision_id] = p9_ctx.get_plan()
+            if exec_rec.customer_id not in self.customer_events_store:
+                self.customer_events_store[exec_rec.customer_id] = p9_ctx.get_customer_events()
+            for peid in p9_ctx.processed_event_ids:
+                self.webhook_handler.processed_event_ids.add(peid)
 
     def record_decision(
         self,

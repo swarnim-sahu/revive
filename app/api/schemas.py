@@ -558,3 +558,33 @@ class GeminiEvaluationResponse(BaseModel):
     failure_summary: Optional[Dict[str, Any]] = None
     sample_records: Optional[List[Dict[str, Any]]] = None
     demonstration_case: Optional[Dict[str, Any]] = None
+
+
+class RazorpaySandboxDemoResponse(BaseModel):
+    """Response model for Phase 9 Controlled Razorpay Test Mode demonstration artifact."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    available: bool
+    status: str  # e.g. "CONTROLLED RAZORPAY TEST MODE — NOT RUN" or "CONTROLLED RAZORPAY TEST MODE — EXECUTED"
+    phase_version: str = "9.0.0"
+    operation: str = "CREATE_PAYMENT_LINK"
+    environment: str = "sandbox"
+    execution_status: str  # "NOT_RUN", "DRY_RUN", "EXECUTED", "FAILED"
+    payment_status: str = "PENDING"  # Hard invariant: Payment Link Created != Payment Recovered
+    payload_id: Optional[str] = None
+    provider_reference: Optional[str] = None
+    short_url: Optional[str] = None
+    webhook_status: str = "PENDING_WEBHOOK"
+    outcome_status: str = "NO_OBSERVABLE_OUTCOME"
+    attribution_status: str = "UNATTRIBUTED"
+    timestamps: Optional[Dict[str, Optional[str]]] = None
+    idempotency_result: Optional[str] = None
+    policy_decision: Optional[Dict[str, Any]] = None
+    failure_reason: Optional[str] = None
+    disclosure: str = (
+        "Controlled Razorpay Test Mode execution demonstration. "
+        "A created Payment Link is an outbound recovery attempt and is NOT recovered revenue. "
+        "Financial recovery and attribution strictly require subsequent verified payment evidence."
+    )
+    source_artifact: str = "docs/evidence/phase9_razorpay_sandbox_demo.json"

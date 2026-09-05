@@ -104,3 +104,11 @@ export async function fetchGeminiEvaluation(): Promise<GeminiEvaluationData> {
   }
   return res.json();
 }
+
+export async function fetchRazorpaySandboxDemo(): Promise<import("./types").RazorpaySandboxDemoData> {
+  const res = await fetch(`${API_BASE_URL}/api/dashboard/razorpay-sandbox-demo`);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch Phase 9 Razorpay sandbox demo (HTTP ${res.status})`);
+  }
+  return res.json();
+}

@@ -1,0 +1,153 @@
+{
+  "schema_version": "1.0.0",
+  "payload_id": "payload_pay_6f3caa78",
+  "execution_id": "exec_cus_rzp_sandbox_demo_001_2026-09-05T15:34:06.595320+00:00_att1",
+  "decision_id": "dec_cus_rzp_sandbox_demo_001_2026-09-05T15:34:06.595320+00:00",
+  "customer_id": "cus_rzp_sandbox_demo_001",
+  "provider_reference": "plink_TYPGQePKkshnPk",
+  "short_url": "https://rzp.io/rzp/U3KgIH3r",
+  "decision": {
+    "customer_id": "cus_rzp_sandbox_demo_001",
+    "decision_timestamp": "2026-09-05T15:34:06.595320+00:00",
+    "policy_version": "v1.0.0",
+    "assumption_version": "v1.0.0",
+    "risk_score": 0.88,
+    "risk_tier": "CRITICAL",
+    "revenue_at_risk": "999",
+    "diagnosis": "PAYMENT_FRICTION",
+    "diagnosis_confidence": 0.9,
+    "diagnosis_actionability": "CANDIDATE",
+    "eligibility_status": "ELIGIBLE",
+    "selected_action": "PAYMENT_RECOVERY",
+    "expected_value": "401.60",
+    "candidate_scores": [
+      {
+        "action": "NO_ACTION",
+        "expected_value": "0.00",
+        "recovery_probability_assumption": 0.0,
+        "direct_cost": "0.00",
+        "incentive_penalty_assumption": "0.00",
+        "harm_penalty_assumption": "0.00",
+        "is_eligible": true,
+        "disqualification_reason": null
+      },
+      {
+        "action": "PRODUCT_GUIDANCE",
+        "expected_value": "0.00",
+        "recovery_probability_assumption": 0.0,
+        "direct_cost": "0.00",
+        "incentive_penalty_assumption": "0.00",
+        "harm_penalty_assumption": "0.00",
+        "is_eligible": false,
+        "disqualification_reason": "No policy mapping for diagnosis/action pair"
+      },
+      {
+        "action": "REMINDER",
+        "expected_value": "133.37",
+        "recovery_probability_assumption": 0.135,
+        "direct_cost": "1.50",
+        "incentive_penalty_assumption": "0.00",
+        "harm_penalty_assumption": "0.00",
+        "is_eligible": true,
+        "disqualification_reason": null
+      },
+      {
+        "action": "CHECKOUT_ASSISTANCE",
+        "expected_value": "0.00",
+        "recovery_probability_assumption": 0.0,
+        "direct_cost": "2.00",
+        "incentive_penalty_assumption": "0.00",
+        "harm_penalty_assumption": "0.00",
+        "is_eligible": false,
+        "disqualification_reason": "No policy mapping for diagnosis/action pair"
+      },
+      {
+        "action": "PAYMENT_RECOVERY",
+        "expected_value": "401.60",
+        "recovery_probability_assumption": 0.405,
+        "direct_cost": "3.00",
+        "incentive_penalty_assumption": "0.00",
+        "harm_penalty_assumption": "0.00",
+        "is_eligible": true,
+        "disqualification_reason": null
+      },
+      {
+        "action": "TRIAL_EXTENSION",
+        "expected_value": "0.00",
+        "recovery_probability_assumption": 0.0,
+        "direct_cost": "5.00",
+        "incentive_penalty_assumption": "0.00",
+        "harm_penalty_assumption": "0.00",
+        "is_eligible": false,
+        "disqualification_reason": "No policy mapping for diagnosis/action pair"
+      },
+      {
+        "action": "HUMAN_REVIEW",
+        "expected_value": "0.00",
+        "recovery_probability_assumption": 0.0,
+        "direct_cost": "150.00",
+        "incentive_penalty_assumption": "0.00",
+        "harm_penalty_assumption": "0.00",
+        "is_eligible": false,
+        "disqualification_reason": "No policy mapping for diagnosis/action pair"
+      }
+    ],
+    "decision_reason": "Selected action PAYMENT_RECOVERY with maximum Net Expected Value Rs. 401.60 (Recovery Assumption: 40.5%)",
+    "rejection_reasons": {
+      "NO_ACTION": "Lower Expected Value (Rs. 0.00 < Rs. 401.60)",
+      "PRODUCT_GUIDANCE": "No policy mapping for diagnosis/action pair",
+      "REMINDER": "Lower Expected Value (Rs. 133.37 < Rs. 401.60)",
+      "CHECKOUT_ASSISTANCE": "No policy mapping for diagnosis/action pair",
+      "TRIAL_EXTENSION": "No policy mapping for diagnosis/action pair",
+      "HUMAN_REVIEW": "No policy mapping for diagnosis/action pair"
+    },
+    "supporting_evidence": [
+      "Recorded 1 payment failure before snapshot (reason: bank_declined)"
+    ]
+  },
+  "plan": {
+    "plan_id": "pro",
+    "name": "Pro Subscription Plan",
+    "price": "999",
+    "currency": "INR",
+    "billing_interval": "monthly"
+  },
+  "execution_record": {
+    "execution_id": "exec_cus_rzp_sandbox_demo_001_2026-09-05T15:34:06.595320+00:00_att1",
+    "decision_id": "dec_cus_rzp_sandbox_demo_001_2026-09-05T15:34:06.595320+00:00",
+    "customer_id": "cus_rzp_sandbox_demo_001",
+    "merchant_id": "merch_codecraft",
+    "execution_timestamp": "2026-09-05T15:34:06.595320+00:00",
+    "action": "PAYMENT_RECOVERY",
+    "status": "EXECUTED",
+    "attempt_number": 1,
+    "payload_id": "payload_pay_6f3caa78",
+    "target_url": "https://rzp.io/rzp/U3KgIH3r",
+    "failure_type": "NONE",
+    "failure_reason": null,
+    "fallback_action": null,
+    "escalation_reason": null,
+    "policy_version": "v1.0.0",
+    "execution_version": "v1.0.0"
+  },
+  "customer_events": [
+    {
+      "event_id": "evt_pre_payload_pay_6f3caa78",
+      "event_type": "payment_failed",
+      "schema_version": "1.0",
+      "merchant_id": "merch_codecraft",
+      "customer_id": "cus_rzp_sandbox_demo_001",
+      "timestamp": "2026-09-05T15:34:06.595320Z",
+      "source": "pre_intervention_observable",
+      "payload": {
+        "reason": "bank_declined",
+        "amount": "999"
+      }
+    }
+  ],
+  "processed_event_ids": [
+    "TYPJSmhXdlkZIj"
+  ],
+  "created_at": "2026-09-05T15:34:06.595189+00:00",
+  "updated_at": "2026-09-05T15:37:00.425475+00:00"
+}

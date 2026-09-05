@@ -427,3 +427,71 @@ def test_20_no_duplicate_gemini_route():
         if hasattr(r, "path") and r.path == "/api/dashboard/gemini-evaluation"
     ]
     assert len(matching_routes) == 1, f"Expected 1 route for gemini-evaluation, found {len(matching_routes)}"
+
+
+def test_21_dashboard_razorpay_sandbox_demo_endpoint():
+    """21. GET /api/dashboard/razorpay-sandbox-demo returns 200 with truthful recovered state."""
+    res = client.get("/api/dashboard/razorpay-sandbox-demo")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["available"] is True
+    assert data["operation"] == "CREATE_PAYMENT_LINK"
+    assert data["environment"] == "sandbox"
+    assert data["execution_status"] == "EXECUTED"
+    assert data["payment_status"] == "PAID"
+    assert data["outcome_status"] == "RECOVERED"
+    assert data["attribution_status"] == "DIRECTLY_OBSERVED"
+    assert data["provider_reference"] is not None
+    assert data["status"] == "CONTROLLED RAZORPAY TEST MODE — PAYMENT RECOVERED"
+    assert "Controlled Razorpay Test Mode" in data["disclosure"]
+
+
+def test_22_dashboard_razorpay_sandbox_demo_presentation_derivation():
+    """22. Verify derivation of presentation status for RECOVERED vs PENDING vs NOT_RUN states."""
+    import json
+    from unittest.mock import mock_open, patch
+
+    # 1. Test RECOVERED state
+    recovered_data = {
+        "phase_version": "9.0.0",
+        "operation": "CREATE_PAYMENT_LINK",
+        "environment": "sandbox",
+        "execution_status": "EXECUTED",
+        "payment_status": "PAID",
+        "outcome_status": "RECOVERED",
+        "attribution_status": "DIRECTLY_OBSERVED",
+        "provider_reference": "plink_test_01",
+    }
+    with patch("builtins.open", mock_open(read_data=json.dumps(recovered_data))):
+        res = client.get("/api/dashboard/razorpay-sandbox-demo")
+        assert res.status_code == 200
+        assert res.json()["status"] == "CONTROLLED RAZORPAY TEST MODE — PAYMENT RECOVERED"
+
+    # 2. Test PENDING state
+    pending_data = {
+        "phase_version": "9.0.0",
+        "operation": "CREATE_PAYMENT_LINK",
+        "environment": "sandbox",
+        "execution_status": "EXECUTED",
+        "payment_status": "PENDING",
+        "outcome_status": "NO_OBSERVABLE_OUTCOME",
+        "attribution_status": "UNATTRIBUTED",
+        "provider_reference": "plink_test_01",
+    }
+    with patch("builtins.open", mock_open(read_data=json.dumps(pending_data))):
+        res = client.get("/api/dashboard/razorpay-sandbox-demo")
+        assert res.status_code == 200
+        assert res.json()["status"] == "CONTROLLED RAZORPAY TEST MODE — PAYMENT LINK CREATED"
+
+    # 3. Test NOT_RUN state
+    not_run_data = {
+        "phase_version": "9.0.0",
+        "operation": "CREATE_PAYMENT_LINK",
+        "environment": "sandbox",
+        "execution_status": "NOT_RUN",
+        "payment_status": "PENDING",
+    }
+    with patch("builtins.open", mock_open(read_data=json.dumps(not_run_data))):
+        res = client.get("/api/dashboard/razorpay-sandbox-demo")
+        assert res.status_code == 200
+        assert res.json()["status"] == "CONTROLLED RAZORPAY TEST MODE — NOT RUN"

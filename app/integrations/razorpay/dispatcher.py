@@ -9,10 +9,15 @@ from app.execution.dispatcher import ExecutionDispatcher
 from app.execution.schemas import InterventionPayload
 from app.intervention.schemas import InterventionAction
 from app.integrations.razorpay.config import DEFAULT_RAZORPAY_CONFIG, RazorpayConfig
-from app.integrations.razorpay.client import BaseRazorpayClient, MockRazorpayClient
+from app.integrations.razorpay.client import (
+    BaseRazorpayClient,
+    MockRazorpayClient,
+    RazorpaySandboxClient,
+)
 from app.integrations.razorpay.schemas import (
     RazorpayCustomerInfo,
     RazorpayPaymentLinkRequest,
+    RazorpayPaymentLinkResponse,
 )
 
 
@@ -20,6 +25,8 @@ class RazorpaySandboxDispatcher(ExecutionDispatcher):
     """
     Razorpay Sandbox Execution Dispatcher.
     Adapter implementing the existing Phase 6 ExecutionDispatcher interface.
+    Routes approved PAYMENT_RECOVERY payloads to either MockRazorpayClient (offline)
+    or RazorpaySandboxClient (Test Mode) based on explicit execution_mode configuration.
     """
 
     def __init__(
@@ -28,7 +35,25 @@ class RazorpaySandboxDispatcher(ExecutionDispatcher):
         client: Optional[BaseRazorpayClient] = None,
     ) -> None:
         self.config = config
-        self.client = client or MockRazorpayClient(config=config)
+        self.last_response: Optional[RazorpayPaymentLinkResponse] = None
+        if client is not None:
+            self.client = client
+        else:
+            mode = (config.execution_mode or "").strip().lower()
+            if mode == "mock":
+                self.client = MockRazorpayClient(config=config)
+            elif mode == "sandbox":
+                self.client = RazorpaySandboxClient(config=config)
+            else:
+                raise ValueError(
+                    f"Unsupported RAZORPAY_EXECUTION_MODE: '{config.execution_mode}'. "
+                    f"Supported modes are 'mock' and 'sandbox'."
+                )
+
+    @property
+    def latest_provider_response(self) -> Optional[RazorpayPaymentLinkResponse]:
+        """Expose the latest provider response from the dispatcher/client boundary."""
+        return self.last_response
 
     def dispatch(
         self,
@@ -69,6 +94,8 @@ class RazorpaySandboxDispatcher(ExecutionDispatcher):
             request=req,
             idempotency_key=payload.payload_id,
         )
+
+        self.last_response = response
 
         if err:
             return err

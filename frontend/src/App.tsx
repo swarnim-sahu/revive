@@ -4,6 +4,7 @@ import {
   fetchCustomers,
   fetchBenchmark,
   fetchRazorpayProof,
+  fetchRazorpaySandboxDemo,
   fetchExceptions,
   fetchFailureScenarios,
   fetchGeminiEvaluation,
@@ -15,6 +16,7 @@ import type {
   CustomerEvidenceRecord,
   BenchmarkData,
   RazorpayProofData,
+  RazorpaySandboxDemoData,
   ExceptionCenterData,
   FailureScenarioData,
   GeminiEvaluationData,
@@ -23,6 +25,7 @@ import type {
 import "./App.css";
 
 type TabView = "overview" | "benchmark" | "proof" | "gemini" | "exceptions" | "failure" | "methodology";
+
 
 export function App() {
   const [activeTab, setActiveTab] = useState<TabView>("overview");
@@ -62,6 +65,7 @@ export function App() {
   // Evidence Centers State
   const [benchmark, setBenchmark] = useState<BenchmarkData | null>(null);
   const [razorpayProof, setRazorpayProof] = useState<RazorpayProofData | null>(null);
+  const [sandboxDemo, setSandboxDemo] = useState<RazorpaySandboxDemoData | null>(null);
   const [exceptionsData, setExceptionsData] = useState<ExceptionCenterData | null>(null);
   const [failureScenarios, setFailureScenarios] = useState<FailureScenarioData[]>([]);
   const [selectedFailureIdx, setSelectedFailureIdx] = useState<number>(0);
@@ -85,19 +89,22 @@ export function App() {
       fetchCustomers(controls),
       fetchBenchmark(),
       fetchRazorpayProof(),
+      fetchRazorpaySandboxDemo(),
       fetchExceptions(controls),
       fetchFailureScenarios(),
       fetchGeminiEvaluation(),
-    ]).then(([sumRes, custRes, benchRes, proofRes, excRes, failRes, gemRes]) => {
+    ]).then(([sumRes, custRes, benchRes, proofRes, demoRes, excRes, failRes, gemRes]) => {
       if (!active) return;
 
       if (sumRes.status === "fulfilled") setSummary(sumRes.value);
       if (custRes.status === "fulfilled") setCustomers(custRes.value);
       if (benchRes.status === "fulfilled") setBenchmark(benchRes.value);
       if (proofRes.status === "fulfilled") setRazorpayProof(proofRes.value);
+      if (demoRes.status === "fulfilled") setSandboxDemo(demoRes.value);
       if (excRes.status === "fulfilled") setExceptionsData(excRes.value);
       if (failRes.status === "fulfilled") setFailureScenarios(failRes.value);
       if (gemRes.status === "fulfilled") setGeminiData(gemRes.value);
+
 
       if (sumRes.status === "rejected" || custRes.status === "rejected") {
         setError("Failed to connect to REVIVE Operational API. Please ensure backend server is running.");
@@ -1115,9 +1122,98 @@ export function App() {
         </section>
       )}
 
-      {/* TAB 3: PHASE A REAL RAZORPAY TEST MODE PROOF */}
+      {/* TAB 3: PHASE A & PHASE 9 RAZORPAY EVIDENCE */}
       {activeTab === "proof" && (
         <section className="proof-view">
+          {/* PHASE 9: CONTROLLED RAZORPAY TEST MODE EXECUTION */}
+          <div className="card mb-4">
+            <div className="evidence-header-card">
+              <div>
+                <div className="drawer-tag">PHASE 9 · CONTROLLED RAZORPAY TEST MODE EXECUTION</div>
+                <h2 className="evidence-title">RAZORPAY TEST MODE DEMONSTRATION</h2>
+                <div className="evidence-meta text-secondary text-xs mt-1">
+                  Mode: <span className="text-primary font-bold">CONTROLLED RAZORPAY TEST MODE</span> •
+                  Gateway: <span className="font-mono text-primary">https://api.razorpay.com/v1</span> •
+                  Status: <span className="text-warning font-bold">{sandboxDemo?.status || "CONTROLLED RAZORPAY TEST MODE — NOT RUN"}</span>
+                </div>
+              </div>
+              <div className="status-badge-container">
+                <span
+                  className={`badge ${
+                    sandboxDemo?.execution_status === "EXECUTED"
+                      ? "badge-warning"
+                      : sandboxDemo?.execution_status === "NOT_RUN"
+                      ? "badge-secondary"
+                      : "badge-danger"
+                  } font-bold text-sm px-3 py-2`}
+                >
+                  {sandboxDemo?.execution_status === "EXECUTED"
+                    ? "PAYMENT LINK CREATED • PAYMENT: PENDING"
+                    : sandboxDemo?.execution_status === "NOT_RUN"
+                    ? "CONTROLLED RAZORPAY TEST MODE — STATUS: NOT RUN"
+                    : `STATUS: ${sandboxDemo?.execution_status || "NOT RUN"}`}
+                </span>
+              </div>
+            </div>
+
+            <div className="disclosure-banner mt-3" style={{ borderLeft: "4px solid var(--status-warning)" }}>
+              <strong>Hard Invariant:</strong> Payment Link Created is NOT Payment Recovered. Generating a payment link is an outbound recovery attempt (Payment Status: PENDING). Financial recovery and attribution strictly require subsequent verified payment evidence (webhook).
+            </div>
+
+            <div className="metrics-grid-4 mt-3">
+              <div className="detail-box">
+                <div className="detail-label">OPERATION</div>
+                <div className="detail-value font-mono text-xs">{sandboxDemo?.operation || "CREATE_PAYMENT_LINK"}</div>
+              </div>
+              <div className="detail-box">
+                <div className="detail-label">PAYMENT STATUS</div>
+                <div className="detail-value font-mono text-warning font-bold">{sandboxDemo?.payment_status || "PENDING"}</div>
+              </div>
+              <div className="detail-box">
+                <div className="detail-label">OUTCOME STATUS</div>
+                <div className="detail-value font-mono text-secondary">{sandboxDemo?.outcome_status || "NO_OBSERVABLE_OUTCOME"}</div>
+              </div>
+              <div className="detail-box">
+                <div className="detail-label">ATTRIBUTION STATUS</div>
+                <div className="detail-value font-mono text-secondary">{sandboxDemo?.attribution_status || "UNATTRIBUTED"}</div>
+              </div>
+            </div>
+
+            <div className="detail-grid mt-3">
+              <div className="detail-box">
+                <div className="detail-label">PAYLOAD ID (IDEMPOTENCY IDENTITY)</div>
+                <div className="detail-value font-mono text-xs text-primary">{sandboxDemo?.payload_id || "None (Unexecuted)"}</div>
+              </div>
+              <div className="detail-box">
+                <div className="detail-label">PROVIDER REFERENCE</div>
+                <div className="detail-value font-mono text-xs">{sandboxDemo?.provider_reference || "None (Not Created)"}</div>
+              </div>
+              <div className="detail-box">
+                <div className="detail-label">SHORT URL</div>
+                <div className="detail-value font-mono text-xs text-blue">
+                  {sandboxDemo?.short_url ? (
+                    <a href={sandboxDemo.short_url} target="_blank" rel="noopener noreferrer">
+                      {sandboxDemo.short_url}
+                    </a>
+                  ) : (
+                    "None (Not Created)"
+                  )}
+                </div>
+              </div>
+              <div className="detail-box">
+                <div className="detail-label">SOURCE ARTIFACT</div>
+                <div className="detail-value font-mono text-xs">{sandboxDemo?.source_artifact || "docs/evidence/phase9_razorpay_sandbox_demo.json"}</div>
+              </div>
+            </div>
+
+            {sandboxDemo?.disclosure && (
+              <div className="text-secondary text-xs mt-3 p-2 bg-surface-soft rounded">
+                <strong>Demonstration Note:</strong> {sandboxDemo.disclosure}
+              </div>
+            )}
+          </div>
+
+          {/* PHASE A: COMMITTED RAZORPAY TEST MODE PROOF */}
           {!razorpayProof ? (
             <div className="error-card">
               <div className="error-title">PROOF EVIDENCE UNAVAILABLE</div>
@@ -1126,6 +1222,7 @@ export function App() {
           ) : (
             <div className="card">
               <div className="evidence-header-card">
+
                 <div>
                   <div className="drawer-tag">PHASE A · RAZORPAY TEST MODE RECOVERY PROOF</div>
                   <h2 className="evidence-title">RAZORPAY PAYMENT PROOF</h2>

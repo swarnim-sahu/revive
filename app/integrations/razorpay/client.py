@@ -51,6 +51,7 @@ class MockRazorpayClient(BaseRazorpayClient):
         self.created_links: Dict[str, RazorpayPaymentLinkResponse] = {}
         self.simulated_failure_reason: Optional[str] = None
         self.last_request: Optional[RazorpayPaymentLinkRequest] = None
+        self.last_response: Optional[RazorpayPaymentLinkResponse] = None
 
     def create_payment_link(
         self,
@@ -67,6 +68,7 @@ class MockRazorpayClient(BaseRazorpayClient):
         # Idempotency check: if key was already processed, return existing link response
         if key in self.processed_idempotency_keys:
             if key in self.created_links:
+                self.last_response = self.created_links[key]
                 return self.created_links[key], None
             return None, f"Idempotent duplicate request '{key}' rejected"
 
@@ -85,17 +87,35 @@ class MockRazorpayClient(BaseRazorpayClient):
             created_at=int(time.time()),
         )
         self.created_links[key] = response
+        self.last_response = response
         return response, None
 
 
 class RazorpaySandboxClient(BaseRazorpayClient):
     """
-    Real Razorpay Sandbox API Client.
-    Connects to api.razorpay.com/v1 endpoints when credentials exist.
+    Real Razorpay Sandbox / Test Mode API Client.
+    Connects to api.razorpay.com/v1 standard gateway with TEST MODE credentials only.
     """
 
     def __init__(self, config: RazorpayConfig = DEFAULT_RAZORPAY_CONFIG) -> None:
         self.config = config
+        # Enforce sandbox / test mode credential and environment safety
+        if self.config.key_id:
+            clean_key = self.config.key_id.strip()
+            if clean_key.startswith("rzp_live_"):
+                raise ValueError(
+                    "Production credentials ('rzp_live_*') are strictly prohibited in sandbox/test mode integration."
+                )
+            if not clean_key.startswith("rzp_test_"):
+                raise ValueError(
+                    f"RazorpaySandboxClient requires Test Mode credentials ('rzp_test_*'). "
+                    f"Provided key does not match test mode prefix."
+                )
+        if self.config.environment in {"production", "live"}:
+            raise ValueError(
+                "Production environment is strictly prohibited in sandbox/test mode integration."
+            )
+        self.last_response: Optional[RazorpayPaymentLinkResponse] = None
 
     def check_connectivity(self) -> Tuple[bool, Optional[str]]:
         """
@@ -199,6 +219,7 @@ class RazorpaySandboxClient(BaseRazorpayClient):
                     currency=str(data.get("currency", request.currency)),
                     created_at=int(data.get("created_at", int(time.time()))),
                 )
+                self.last_response = response_model
                 return response_model, None
 
         except urllib.error.HTTPError as e:

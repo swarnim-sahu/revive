@@ -536,3 +536,25 @@ export interface CohortControls {
   cohortSize: number;
   snapshotHours: number;
 }
+
+export interface RazorpaySandboxDemoData {
+  available: boolean;
+  status: string;
+  phase_version: string;
+  operation: string;
+  environment: string;
+  execution_status: string;
+  payment_status: string;
+  payload_id?: string | null;
+  provider_reference?: string | null;
+  short_url?: string | null;
+  webhook_status: string;
+  outcome_status: string;
+  attribution_status: string;
+  timestamps?: Record<string, string | null> | null;
+  idempotency_result?: string | null;
+  policy_decision?: Record<string, unknown> | null;
+  failure_reason?: string | null;
+  disclosure: string;
+  source_artifact: string;
+}

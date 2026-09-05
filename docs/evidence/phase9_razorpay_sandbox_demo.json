@@ -1,0 +1,31 @@
+{
+  "phase_version": "9.0.0",
+  "operation": "CREATE_PAYMENT_LINK",
+  "environment": "sandbox",
+  "policy_decision": {
+    "customer_id": "cus_rzp_sandbox_demo_001",
+    "selected_action": "PAYMENT_RECOVERY",
+    "eligibility_status": "ELIGIBLE",
+    "expected_value": 401.6,
+    "revenue_at_risk": 999.0,
+    "decision_timestamp": "2026-09-05T15:34:06.595320+00:00"
+  },
+  "execution_status": "EXECUTED",
+  "payment_status": "PAID",
+  "payload_id": "payload_pay_6f3caa78",
+  "provider_reference": "plink_TYPGQePKkshnPk",
+  "short_url": "https://rzp.io/rzp/U3KgIH3r",
+  "webhook_status": "PROCESSED",
+  "outcome_status": "RECOVERED",
+  "attribution_status": "DIRECTLY_OBSERVED",
+  "timestamps": {
+    "decision_timestamp": "2026-09-05T15:34:06.595320+00:00",
+    "execution_timestamp": "2026-09-05T15:34:06.595320+00:00",
+    "demonstration_timestamp": "2026-09-05T15:34:06.595189+00:00",
+    "webhook_timestamp": "2026-09-05T15:37:00.421028+00:00",
+    "outcome_timestamp": "2026-09-05T15:37:00.421028+00:00"
+  },
+  "idempotency_result": "EXECUTION_SUCCEEDED",
+  "failure_reason": null,
+  "disclosure": "Controlled Razorpay Test Mode execution demonstration. A created Payment Link is an outbound recovery attempt and is NOT recovered revenue. Financial recovery and attribution strictly require subsequent verified payment evidence."
+}

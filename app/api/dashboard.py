@@ -43,6 +43,7 @@ from app.api.schemas import (
     OutcomesSummary,
     PolicySummary,
     RazorpayProofResponse,
+    RazorpaySandboxDemoResponse,
     RiskSummary,
     GeminiEvaluationResponse,
 )
@@ -54,7 +55,9 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _PHASE_B_EVIDENCE_PATH = _PROJECT_ROOT / "docs" / "evidence" / "phase_b_summary.json"
 _PHASE_A_PROOF_PATH = _PROJECT_ROOT / "docs" / "evidence" / "phase_a_razorpay_test_mode_proof.json"
 _PHASE_D_EVIDENCE_PATH = _PROJECT_ROOT / "docs" / "evidence" / "phase_d_gemini_evaluation.json"
+_PHASE9_SANDBOX_DEMO_PATH = _PROJECT_ROOT / "docs" / "evidence" / "phase9_razorpay_sandbox_demo.json"
 _DEFAULT_DEMO_PATH = _PROJECT_ROOT / "docs" / "evidence" / "phase_d_gemini_demo.json"
+
 
 
 # In-memory evaluation cache for operational batch benchmark stability and performance
@@ -384,6 +387,94 @@ def get_dashboard_razorpay_proof() -> RazorpayProofResponse:
             status_code=500,
             detail=f"Failed to read Razorpay proof artifact: {exc}",
         )
+
+
+@router.get("/razorpay-sandbox-demo", response_model=RazorpaySandboxDemoResponse)
+def get_dashboard_razorpay_sandbox_demo() -> RazorpaySandboxDemoResponse:
+    """
+    Return the Phase 9 Controlled Razorpay Test Mode demonstration state.
+    Distinguishes NOT_RUN / DRY_RUN vs EXECUTED.
+    Enforces hard separation: Payment Link Created != Payment Recovered.
+    """
+    rel_path_str = _get_relative_path(_PHASE9_SANDBOX_DEMO_PATH)
+    if not _PHASE9_SANDBOX_DEMO_PATH.exists():
+        return RazorpaySandboxDemoResponse(
+            available=False,
+            status="CONTROLLED RAZORPAY TEST MODE — NOT RUN",
+            execution_status="NOT_RUN",
+            payment_status="PENDING",
+            outcome_status="NO_OBSERVABLE_OUTCOME",
+            attribution_status="UNATTRIBUTED",
+            disclosure=(
+                "Controlled Razorpay Test Mode demonstration record. Initialized in NOT_RUN state. "
+                "Requires explicit user invocation with Test Mode credentials."
+            ),
+            source_artifact=rel_path_str,
+        )
+
+    try:
+        with open(_PHASE9_SANDBOX_DEMO_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        exec_status = data.get("execution_status", "NOT_RUN")
+        payment_status = data.get("payment_status", "PENDING")
+        outcome_status = data.get("outcome_status", "NO_OBSERVABLE_OUTCOME")
+        attribution_status = data.get("attribution_status", "UNATTRIBUTED")
+
+        if exec_status == "EXECUTED":
+            if (
+                payment_status == "PAID"
+                and outcome_status == "RECOVERED"
+                and attribution_status == "DIRECTLY_OBSERVED"
+            ):
+                status_label = "CONTROLLED RAZORPAY TEST MODE — PAYMENT RECOVERED"
+            elif payment_status == "PENDING":
+                status_label = "CONTROLLED RAZORPAY TEST MODE — PAYMENT LINK CREATED"
+            else:
+                status_label = f"CONTROLLED RAZORPAY TEST MODE — {payment_status}"
+        elif exec_status in {"DRY_RUN", "NOT_RUN"}:
+            status_label = "CONTROLLED RAZORPAY TEST MODE — NOT RUN"
+        else:
+            status_label = f"CONTROLLED RAZORPAY TEST MODE — {exec_status}"
+
+        return RazorpaySandboxDemoResponse(
+            available=True,
+            status=status_label,
+            phase_version=data.get("phase_version", "9.0.0"),
+            operation=data.get("operation", "CREATE_PAYMENT_LINK"),
+            environment=data.get("environment", "sandbox"),
+            execution_status=exec_status,
+            payment_status=data.get("payment_status", "PENDING"),
+            payload_id=data.get("payload_id"),
+            provider_reference=data.get("provider_reference"),
+            short_url=data.get("short_url"),
+            webhook_status=data.get("webhook_status", "PENDING_WEBHOOK"),
+            outcome_status=data.get("outcome_status", "NO_OBSERVABLE_OUTCOME"),
+            attribution_status=data.get("attribution_status", "UNATTRIBUTED"),
+            timestamps=data.get("timestamps"),
+            idempotency_result=data.get("idempotency_result"),
+            policy_decision=data.get("policy_decision"),
+            failure_reason=data.get("failure_reason"),
+            disclosure=data.get("disclosure", (
+                "Controlled Razorpay Test Mode execution demonstration. "
+                "A created Payment Link is an outbound recovery attempt and is NOT recovered revenue. "
+                "Financial recovery and attribution strictly require subsequent verified payment evidence."
+            )),
+            source_artifact=rel_path_str,
+        )
+    except Exception as exc:
+        return RazorpaySandboxDemoResponse(
+            available=False,
+            status="CONTROLLED RAZORPAY TEST MODE — ERROR",
+            execution_status="FAILED",
+            payment_status="PENDING",
+            outcome_status="NO_OBSERVABLE_OUTCOME",
+            attribution_status="UNATTRIBUTED",
+            failure_reason=f"Failed to parse demonstration artifact: {exc}",
+            disclosure="Demonstration artifact read failure.",
+            source_artifact=rel_path_str,
+        )
+
 
 
 @router.get("/audit/{customer_id}", response_model=AuditTimelineResponse)
