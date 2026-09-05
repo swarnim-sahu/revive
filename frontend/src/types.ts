@@ -530,3 +530,9 @@ export interface GeminiEvaluationData {
   sample_records?: Array<Record<string, unknown>> | null;
   demonstration_case?: PhaseDDemonstrationCase | null;
 }
+
+export interface CohortControls {
+  seed: number;
+  cohortSize: number;
+  snapshotHours: number;
+}

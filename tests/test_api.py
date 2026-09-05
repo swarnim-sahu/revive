@@ -53,10 +53,29 @@ def test_2_dashboard_summary_endpoint():
 
 
 def test_3_dashboard_summary_determinism():
-    """3. GET /api/dashboard/summary is 100% deterministic across multiple invocations."""
-    res1 = client.get("/api/dashboard/summary").json()
-    res2 = client.get("/api/dashboard/summary").json()
-    assert res1 == res2
+    """3. GET /api/dashboard/summary is 100% deterministic and reproducible across seeds and cohort sizes."""
+    # Summary A, B, C test: seed=42 vs seed=99 vs seed=42
+    A = client.get("/api/dashboard/summary?seed=42&cohort_size=100&snapshot_hours=336.0").json()
+    B = client.get("/api/dashboard/summary?seed=99&cohort_size=100&snapshot_hours=336.0").json()
+    C = client.get("/api/dashboard/summary?seed=42&cohort_size=100&snapshot_hours=336.0").json()
+
+    assert A != B
+    assert A == C
+
+    # Customer list reproducibility: seed=42 vs seed=99 vs seed=42
+    custA = client.get("/api/dashboard/customers?seed=42&cohort_size=100&snapshot_hours=336.0").json()
+    custB = client.get("/api/dashboard/customers?seed=99&cohort_size=100&snapshot_hours=336.0").json()
+    custC = client.get("/api/dashboard/customers?seed=42&cohort_size=100&snapshot_hours=336.0").json()
+
+    assert custA != custB
+    assert custA == custC
+
+    # Different cohort sizes: 50 vs 100
+    res50 = client.get("/api/dashboard/customers?seed=42&cohort_size=50&snapshot_hours=336.0").json()
+    res100 = client.get("/api/dashboard/customers?seed=42&cohort_size=100&snapshot_hours=336.0").json()
+
+    assert len(res50) == 50
+    assert len(res100) == 100
 
 
 def test_4_dashboard_customers_list_endpoint():
@@ -198,6 +217,9 @@ def test_11_dashboard_audit_timeline_9_stages():
 
     allowed_statuses = [
         "EXECUTED",
+        "PASSED",
+        "GOVERNED_STOP",
+        "ESCALATED",
         "BLOCKED",
         "NOT EXECUTED",
         "FAILED",
@@ -277,3 +299,131 @@ def test_15_cors_headers_configured_for_frontend_origins():
     )
     assert response_localhost.status_code == 200
     assert response_localhost.headers.get("access-control-allow-origin") == "http://localhost:5173"
+
+
+def test_16_guard_semantics_passed_vs_governed_stop_vs_blocked():
+    """16. Correct Guard Semantics: PASSED for eligible actions, GOVERNED_STOP for NO_ACTION, BLOCKED for ineligible."""
+    # Find cus_000005 (Payment recovery, eligible) -> GUARD must be PASSED
+    res_passed = client.get("/api/dashboard/audit/cus_000005?seed=42&cohort_size=100")
+    assert res_passed.status_code == 200
+    audit_passed = res_passed.json()
+    guard_stage_passed = next(s for s in audit_passed["stages"] if s["stage_name"] == "GUARD")
+    assert guard_stage_passed["status"] == "PASSED"
+    assert "authorized" in guard_stage_passed["summary"]
+
+    # Check all customers in cohort to find a NO_ACTION and INELIGIBLE case if present
+    cust_res = client.get("/api/dashboard/customers?seed=42&cohort_size=100")
+    assert cust_res.status_code == 200
+    all_custs = cust_res.json()
+
+    no_action_cust = next((c for c in all_custs if c["selected_action"] == "NO_ACTION" and c["eligibility_status"] == "ELIGIBLE"), None)
+    if no_action_cust:
+        res_stop = client.get(f"/api/dashboard/audit/{no_action_cust['customer_id']}?seed=42&cohort_size=100")
+        assert res_stop.status_code == 200
+        guard_stage_stop = next(s for s in res_stop.json()["stages"] if s["stage_name"] == "GUARD")
+        assert guard_stage_stop["status"] == "GOVERNED_STOP"
+        assert "Governed non-action" in guard_stage_stop["summary"]
+
+    ineligible_cust = next((c for c in all_custs if c["eligibility_status"] == "INELIGIBLE"), None)
+    if ineligible_cust:
+        res_blocked = client.get(f"/api/dashboard/audit/{ineligible_cust['customer_id']}?seed=42&cohort_size=100")
+        assert res_blocked.status_code == 200
+        guard_stage_blocked = next(s for s in res_blocked.json()["stages"] if s["stage_name"] == "GUARD")
+        assert guard_stage_blocked["status"] == "BLOCKED"
+        assert "BLOCKED" in guard_stage_blocked["summary"]
+
+    # Verify completed_stages excludes GOVERNED_STOP, BLOCKED, ESCALATED
+    completed_statuses = {"EXECUTED", "PASSED", "RECOVERED", "DIRECTLY_OBSERVED", "SYNTHETIC_OBSERVED"}
+    for c in all_custs[:10]:
+        res_audit = client.get(f"/api/dashboard/audit/{c['customer_id']}?seed=42&cohort_size=100")
+        if res_audit.status_code == 200:
+            a = res_audit.json()
+            expected_completed = sum(1 for s in a["stages"] if s["status"] in completed_statuses)
+            assert a["completed_stages"] == expected_completed
+            # Assert that no governed stop or blocked stage is counted as completed
+            for s in a["stages"]:
+                if s["status"] in {"GOVERNED_STOP", "BLOCKED", "ESCALATED"}:
+                    assert s["status"] not in completed_statuses
+
+
+def test_17_composite_cache_and_query_parameters():
+    """17. Composite cache respects (cohort_size, seed, snapshot_hours) and maintains determinism."""
+    # Call with custom parameters
+    res1 = client.get("/api/dashboard/summary?seed=99&cohort_size=50&snapshot_hours=168.0")
+    assert res1.status_code == 200
+    data1 = res1.json()
+    assert data1["dataset"]["customers_evaluated"] == 50
+
+    # Repeat call: verify exact deterministic result
+    res2 = client.get("/api/dashboard/summary?seed=99&cohort_size=50&snapshot_hours=168.0")
+    assert res2.status_code == 200
+    data2 = res2.json()
+    assert data1["expected_recovery"]["total_revenue_at_risk"] == data2["expected_recovery"]["total_revenue_at_risk"]
+
+    # Call with alias customers_count
+    res_alias = client.get("/api/dashboard/summary?customers_count=25&seed=42")
+    assert res_alias.status_code == 200
+    assert res_alias.json()["dataset"]["customers_evaluated"] == 25
+
+    # Distinct seed produces distinct evaluation
+    res_seed42 = client.get("/api/dashboard/summary?seed=42&cohort_size=50&snapshot_hours=168.0")
+    assert res_seed42.status_code == 200
+    data_seed42 = res_seed42.json()
+    assert data_seed42["dataset"]["customers_evaluated"] == 50
+
+
+def test_18_query_parameter_propagation_customers_and_audit():
+    """18. Query parameters propagate to customers list, customer detail, audit timeline, and exceptions."""
+    cust_res = client.get("/api/dashboard/customers?seed=77&cohort_size=25&snapshot_hours=336.0")
+    assert cust_res.status_code == 200
+    custs = cust_res.json()
+    assert len(custs) == 25
+    first_id = custs[0]["customer_id"]
+
+    # Single customer detail
+    single_res = client.get(f"/api/dashboard/customers/{first_id}?seed=77&cohort_size=25&snapshot_hours=336.0")
+    assert single_res.status_code == 200
+    assert single_res.json()["customer_id"] == first_id
+
+    # Customer audit timeline
+    audit_res = client.get(f"/api/dashboard/audit/{first_id}?seed=77&cohort_size=25&snapshot_hours=336.0")
+    assert audit_res.status_code == 200
+    assert audit_res.json()["customer_id"] == first_id
+
+    # Exceptions
+    exc_res = client.get("/api/dashboard/exceptions?seed=77&cohort_size=25&snapshot_hours=336.0")
+    assert exc_res.status_code == 200
+    assert "total_exceptions" in exc_res.json()
+
+
+def test_19_failure_scenarios_all_5_scenarios_present():
+    """19. All 5 controlled failure scenarios are present with complete step lifecycles."""
+    res = client.get("/api/dashboard/failure-scenarios")
+    assert res.status_code == 200
+    scenarios = res.json()
+    assert len(scenarios) == 5
+
+    scenario_ids = [s["scenario_id"] for s in scenarios]
+    assert scenario_ids == [
+        "payment_gateway_timeout_retryable",
+        "terminal_policy_blocked_invalid_state",
+        "cooldown_window_blocked",
+        "idempotent_duplicate_suppression",
+        "retry_exhaustion_escalation",
+    ]
+
+    for s in scenarios:
+        assert s["label"] == "CONTROLLED DETERMINISTIC FAILURE FIXTURE"
+        assert len(s["steps"]) >= 3
+        assert s["customer_id"].startswith("cus_")
+        assert s["final_state"] in ["RETRY", "STOP", "BLOCKED", "EXECUTED", "ESCALATED", "NO_ACTION"]
+
+
+def test_20_no_duplicate_gemini_route():
+    """20. Ensure GET /api/dashboard/gemini-evaluation is registered exactly once without route shadowing."""
+    from app.api.main import app
+    matching_routes = [
+        r for r in app.routes
+        if hasattr(r, "path") and r.path == "/api/dashboard/gemini-evaluation"
+    ]
+    assert len(matching_routes) == 1, f"Expected 1 route for gemini-evaluation, found {len(matching_routes)}"

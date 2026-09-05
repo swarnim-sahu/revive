@@ -1,14 +1,15 @@
 import React, { useEffect, useState } from "react";
-import type { CustomerEvidenceRecord, AuditTimelineData } from "./types";
+import type { CustomerEvidenceRecord, AuditTimelineData, CohortControls } from "./types";
 import { fetchCustomerAudit } from "./api";
 import { formatINR } from "./utils";
 
 interface CustomerDrawerProps {
   customer: CustomerEvidenceRecord | null;
+  controls?: CohortControls;
   onClose: () => void;
 }
 
-export const CustomerDrawer: React.FC<CustomerDrawerProps> = ({ customer, onClose }) => {
+export const CustomerDrawer: React.FC<CustomerDrawerProps> = ({ customer, controls, onClose }) => {
   const [auditData, setAuditData] = useState<AuditTimelineData | null>(null);
   const [auditLoading, setAuditLoading] = useState<boolean>(false);
   const [auditError, setAuditError] = useState<string | null>(null);
@@ -18,7 +19,7 @@ export const CustomerDrawer: React.FC<CustomerDrawerProps> = ({ customer, onClos
 
     let active = true;
 
-    fetchCustomerAudit(customer.customer_id)
+    fetchCustomerAudit(customer.customer_id, controls)
       .then((data) => {
         if (active) {
           setAuditData(data);
@@ -35,7 +36,7 @@ export const CustomerDrawer: React.FC<CustomerDrawerProps> = ({ customer, onClos
     return () => {
       active = false;
     };
-  }, [customer]);
+  }, [customer, controls]);
 
   if (!customer) return null;
 
@@ -48,8 +49,8 @@ export const CustomerDrawer: React.FC<CustomerDrawerProps> = ({ customer, onClos
             <div className="drawer-tag">CUSTOMER AUDIT LINEAGE & EXPLAINABILITY</div>
             <h2 className="drawer-title">{customer.customer_id}</h2>
             <div className="drawer-meta text-secondary text-xs mt-1">
-              Plan: <span className="text-white font-bold">{customer.plan?.toUpperCase() || "PRO"}</span> • Provenance:{" "}
-              <span className="text-cyan font-bold">CUSTOMER OPERATIONAL STATE</span>
+              Plan: <span className="text-primary font-bold">{customer.plan?.toUpperCase() || "PRO"}</span> • Provenance:{" "}
+              <span className="text-blue font-bold">CUSTOMER OPERATIONAL STATE</span>
             </div>
           </div>
           <button type="button" className="drawer-close-btn" onClick={onClose} aria-label="Close drawer">
@@ -332,11 +333,11 @@ export const CustomerDrawer: React.FC<CustomerDrawerProps> = ({ customer, onClos
 
                   <div className="timeline-steps">
                     {auditData.stages.map((stg) => (
-                      <div key={stg.stage_index} className={`timeline-node status-${stg.status.toLowerCase().replace(/ /g, "-")}`}>
+                      <div key={stg.stage_index} className={`timeline-node status-${stg.status.toLowerCase().replace(/_/g, "-").replace(/ /g, "-")}`}>
                         <div className="timeline-node-header">
                           <div className="timeline-node-index">{stg.stage_index}</div>
                           <div className="timeline-node-name">{stg.stage_name}</div>
-                          <span className={`badge stage-badge-${stg.status.toLowerCase().replace(/ /g, "-")}`}>
+                          <span className={`badge stage-badge-${stg.status.toLowerCase().replace(/_/g, "-").replace(/ /g, "-")}`}>
                             {stg.status}
                           </span>
                           {stg.timestamp && <div className="timeline-node-time">{stg.timestamp}</div>}

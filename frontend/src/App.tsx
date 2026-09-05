@@ -18,6 +18,7 @@ import type {
   ExceptionCenterData,
   FailureScenarioData,
   GeminiEvaluationData,
+  CohortControls,
 } from "./types";
 import "./App.css";
 
@@ -26,12 +27,36 @@ type TabView = "overview" | "benchmark" | "proof" | "gemini" | "exceptions" | "f
 export function App() {
   const [activeTab, setActiveTab] = useState<TabView>("overview");
 
+  // Cohort & Reproducibility Controls
+  const [controls, setControls] = useState<CohortControls>({
+    seed: 42,
+    cohortSize: 100,
+    snapshotHours: 336.0,
+  });
+  const [customSeedInput, setCustomSeedInput] = useState<string>("42");
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerEvidenceRecord | null>(null);
+
+  const handleUpdateControls = (newControls: CohortControls | ((prev: CohortControls) => CohortControls)) => {
+    setSelectedCustomer(null);
+    setControls(newControls);
+  };
+
+  // Adjust state during render if controls change (React standard pattern)
+  const [prevControls, setPrevControls] = useState(controls);
+  if (
+    prevControls.seed !== controls.seed ||
+    prevControls.cohortSize !== controls.cohortSize ||
+    prevControls.snapshotHours !== controls.snapshotHours
+  ) {
+    setPrevControls(controls);
+    setSelectedCustomer(null);
+  }
+
   // Operational State
   const [summary, setSummary] = useState<DashboardSummaryResponse | null>(null);
   const [customers, setCustomers] = useState<CustomerEvidenceRecord[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedCustomer, setSelectedCustomer] = useState<CustomerEvidenceRecord | null>(null);
   const [reloadTrigger, setReloadTrigger] = useState<number>(0);
 
   // Evidence Centers State
@@ -46,18 +71,21 @@ export function App() {
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [riskFilter, setRiskFilter] = useState<string>("ALL");
   const [diagnosisFilter, setDiagnosisFilter] = useState<string>("ALL");
+  const [actionFilter, setActionFilter] = useState<string>("ALL");
+  const [eligibilityFilter, setEligibilityFilter] = useState<string>("ALL");
   const [execFilter, setExecFilter] = useState<string>("ALL");
   const [outcomeFilter, setOutcomeFilter] = useState<string>("ALL");
+  const [attributionFilter, setAttributionFilter] = useState<string>("ALL");
 
   useEffect(() => {
     let active = true;
 
     Promise.allSettled([
-      fetchSummary(),
-      fetchCustomers(),
+      fetchSummary(controls),
+      fetchCustomers(controls),
       fetchBenchmark(),
       fetchRazorpayProof(),
-      fetchExceptions(),
+      fetchExceptions(controls),
       fetchFailureScenarios(),
       fetchGeminiEvaluation(),
     ]).then(([sumRes, custRes, benchRes, proofRes, excRes, failRes, gemRes]) => {
@@ -82,7 +110,7 @@ export function App() {
     return () => {
       active = false;
     };
-  }, [reloadTrigger]);
+  }, [controls, reloadTrigger]);
 
   const handleRetry = () => {
     setLoading(true);
@@ -106,6 +134,14 @@ export function App() {
       list = list.filter((c) => c.diagnosis === diagnosisFilter);
     }
 
+    if (actionFilter !== "ALL") {
+      list = list.filter((c) => c.selected_action === actionFilter);
+    }
+
+    if (eligibilityFilter !== "ALL") {
+      list = list.filter((c) => c.eligibility_status === eligibilityFilter);
+    }
+
     if (execFilter !== "ALL") {
       list = list.filter((c) => c.execution_status.toUpperCase() === execFilter);
     }
@@ -114,10 +150,14 @@ export function App() {
       list = list.filter((c) => (c.outcome || "PENDING").toUpperCase() === outcomeFilter);
     }
 
+    if (attributionFilter !== "ALL") {
+      list = list.filter((c) => (c.attribution_status || "UNATTRIBUTED").toUpperCase() === attributionFilter);
+    }
+
     // Default sort: highest risk score descending
     list.sort((a, b) => b.risk_score - a.risk_score);
     return list;
-  }, [customers, searchTerm, riskFilter, diagnosisFilter, execFilter, outcomeFilter]);
+  }, [customers, searchTerm, riskFilter, diagnosisFilter, actionFilter, eligibilityFilter, execFilter, outcomeFilter, attributionFilter]);
 
   // Demo Selectors
   const handleSelectDemo = (customerId: string) => {
@@ -159,28 +199,177 @@ export function App() {
     <div className="app-container">
       {/* 1. TOP HEADER & PROVENANCE BAR */}
       <header className="header-bar">
-        <div>
-          <div className="brand-title">
-            REVIVE <span className="brand-badge">API</span>
+        <div className="brand-block">
+          <div className="brand-header-row">
+            <div className="brand-logo-mark">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M13 2L3 14H12L11 22L21 10H12L13 2Z" fill="url(#brand-grad)" stroke="#60A5FA" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                <defs>
+                  <linearGradient id="brand-grad" x1="3" y1="2" x2="21" y2="22" gradientUnits="userSpaceOnUse">
+                    <stop stopColor="#3B82F6"/>
+                    <stop offset="1" stopColor="#8B5CF6"/>
+                  </linearGradient>
+                </defs>
+              </svg>
+            </div>
+            <div>
+              <div className="brand-title">
+                REVIVE <span className="brand-badge">CONTROL PLANE</span>
+              </div>
+              <div className="header-headline">REVENUE RECOVERY CONTROL PLANE</div>
+            </div>
           </div>
-          <div className="header-subtitle">AI REVENUE RECOVERY COMMAND CENTER & EVIDENCE SUITE</div>
+          <div className="header-subtitle">
+            AI-assisted recovery intelligence • deterministic policy • governed execution
+          </div>
         </div>
 
         <div className="provenance-badges">
           <div className="prov-chip prov-operational">
             <span className="prov-dot"></span>
-            <span>CUSTOMER OPERATIONAL STATE (100 Cases)</span>
+            <span className="prov-tag">OPERATIONAL COHORT</span>
+            <span className="prov-val font-mono">{summary?.dataset?.customers_evaluated ?? controls.cohortSize} Cases</span>
           </div>
           <div className="prov-chip prov-proof">
             <span className="prov-dot"></span>
-            <span>RAZORPAY TEST MODE (Captured Proof)</span>
+            <span className="prov-tag">RAZORPAY TEST MODE</span>
+            <span className="prov-val">Live Webhook Proof</span>
           </div>
           <div className="prov-chip prov-benchmark">
             <span className="prov-dot"></span>
-            <span>PHASE B BENCHMARK (10k Pairs)</span>
+            <span className="prov-tag">PHASE B BENCHMARK</span>
+            <span className="prov-val font-mono">10,000 Paired Units</span>
           </div>
         </div>
       </header>
+
+      {/* REPRODUCIBLE RUN CONFIGURATION BAR */}
+      <section className="cohort-control-bar">
+        <div className="control-bar-inner">
+          <div className="control-bar-title-wrap">
+            <span className="control-bar-icon">⚡</span>
+            <div className="control-bar-titles">
+              <span className="control-bar-title">RUN CONFIGURATION</span>
+              <span className="control-bar-subtitle">Deterministic Replay</span>
+            </div>
+          </div>
+
+          <div className="control-divider"></div>
+
+          {/* Seed Control */}
+          <div className="cohort-control-group">
+            <span className="cohort-control-label">SEED</span>
+            <div className="cohort-input-wrap">
+              <input
+                type="number"
+                className="cohort-number-input"
+                value={customSeedInput}
+                onChange={(e) => setCustomSeedInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    const parsed = parseInt(customSeedInput, 10);
+                    if (!isNaN(parsed)) {
+                      handleUpdateControls((prev) => ({ ...prev, seed: parsed }));
+                    }
+                  }
+                }}
+                onBlur={() => {
+                  const parsed = parseInt(customSeedInput, 10);
+                  if (!isNaN(parsed)) {
+                    handleUpdateControls((prev) => ({ ...prev, seed: parsed }));
+                  } else {
+                    setCustomSeedInput(controls.seed.toString());
+                  }
+                }}
+                title="Press Enter to apply custom seed"
+              />
+            </div>
+            <div className="cohort-btn-group">
+              <button
+                type="button"
+                className={`cohort-chip-btn ${controls.seed === 42 ? "active" : ""}`}
+                onClick={() => {
+                  handleUpdateControls((prev) => ({ ...prev, seed: 42 }));
+                  setCustomSeedInput("42");
+                }}
+              >
+                42
+              </button>
+              <button
+                type="button"
+                className={`cohort-chip-btn ${controls.seed === 99 ? "active" : ""}`}
+                onClick={() => {
+                  handleUpdateControls((prev) => ({ ...prev, seed: 99 }));
+                  setCustomSeedInput("99");
+                }}
+              >
+                99
+              </button>
+            </div>
+          </div>
+
+          <div className="control-divider"></div>
+
+          {/* Cohort Size Control */}
+          <div className="cohort-control-group">
+            <span className="cohort-control-label">COHORT</span>
+            <div className="cohort-btn-group segmented">
+              {[25, 50, 100, 250, 500].map((size) => (
+                <button
+                  key={size}
+                  type="button"
+                  className={`cohort-chip-btn ${controls.cohortSize === size ? "active" : ""}`}
+                  onClick={() => handleUpdateControls((prev) => ({ ...prev, cohortSize: size }))}
+                >
+                  {size}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="control-divider"></div>
+
+          {/* Snapshot Horizon Control */}
+          <div className="cohort-control-group">
+            <span className="cohort-control-label">SNAPSHOT</span>
+            <div className="cohort-btn-group segmented">
+              {[168, 336, 504].map((hrs) => (
+                <button
+                  key={hrs}
+                  type="button"
+                  className={`cohort-chip-btn ${controls.snapshotHours === hrs ? "active" : ""}`}
+                  onClick={() => handleUpdateControls((prev) => ({ ...prev, snapshotHours: hrs }))}
+                >
+                  {hrs}h
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Presets & Reset */}
+          <button
+            type="button"
+            className="preset-btn preset-reset"
+            onClick={() => {
+              handleUpdateControls({ seed: 42, cohortSize: 100, snapshotHours: 336.0 });
+              setCustomSeedInput("42");
+            }}
+          >
+            ↺ Reset
+          </button>
+
+          {/* Active Run Status Pill */}
+          <div className="active-run-pill">
+            <span className="pulse-dot"></span>
+            <div className="run-pill-content">
+              <span className="run-pill-tag">REPRODUCIBLE RUN</span>
+              <span className="run-pill-details font-mono">
+                Seed {controls.seed} • Cohort {controls.cohortSize} • Snapshot {controls.snapshotHours}h
+              </span>
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* 2. COMMAND CENTER NAVIGATION TABS */}
       <nav className="tab-navigation">
@@ -189,49 +378,56 @@ export function App() {
           className={`tab-btn ${activeTab === "overview" ? "active" : ""}`}
           onClick={() => setActiveTab("overview")}
         >
-          📊 OVERVIEW & RECOVERY QUEUE
+          <span className="tab-icon">📊</span>
+          <span>RECOVERY COMMAND CENTER</span>
         </button>
         <button
           type="button"
           className={`tab-btn ${activeTab === "benchmark" ? "active" : ""}`}
           onClick={() => setActiveTab("benchmark")}
         >
-          📈 PHASE B BENCHMARK (10k PAIRS)
+          <span className="tab-icon">📈</span>
+          <span>CONTROLLED BENCHMARK</span>
         </button>
         <button
           type="button"
           className={`tab-btn ${activeTab === "proof" ? "active" : ""}`}
           onClick={() => setActiveTab("proof")}
         >
-          💳 PHASE A RAZORPAY TEST PROOF
+          <span className="tab-icon">💳</span>
+          <span>RAZORPAY PAYMENT PROOF</span>
         </button>
         <button
           type="button"
           className={`tab-btn ${activeTab === "gemini" ? "active" : ""}`}
           onClick={() => setActiveTab("gemini")}
         >
-          🤖 PHASE D GEMINI AI EVIDENCE
+          <span className="tab-icon">🤖</span>
+          <span>AI EVALUATION & EVIDENCE</span>
         </button>
         <button
           type="button"
           className={`tab-btn ${activeTab === "exceptions" ? "active" : ""}`}
           onClick={() => setActiveTab("exceptions")}
         >
-          🛑 EXCEPTIONS & GOVERNED STOPS
+          <span className="tab-icon">🛑</span>
+          <span>SAFETY & EXCEPTIONS</span>
         </button>
         <button
           type="button"
           className={`tab-btn ${activeTab === "failure" ? "active" : ""}`}
           onClick={() => setActiveTab("failure")}
         >
-          ⚠️ CONTROLLED FAILURE DEMO
+          <span className="tab-icon">⚠️</span>
+          <span>FAILURE SCENARIOS</span>
         </button>
         <button
           type="button"
           className={`tab-btn ${activeTab === "methodology" ? "active" : ""}`}
           onClick={() => setActiveTab("methodology")}
         >
-          📖 METHODOLOGY & LIMITATIONS
+          <span className="tab-icon">📖</span>
+          <span>METHODOLOGY & LIMITS</span>
         </button>
       </nav>
 
@@ -243,100 +439,203 @@ export function App() {
           {/* HERO KPI CARDS */}
           <section className="kpi-grid">
             <div className="kpi-card risk">
-              <div className="kpi-title">REVENUE AT RISK</div>
-              <div className="kpi-value">{formatINR(expected_recovery.total_revenue_at_risk)}</div>
-              <div className="kpi-subtext text-secondary">{risk.high + risk.critical} High/Critical Tiers</div>
+              <div className="kpi-corner-accent"></div>
+              <div className="kpi-header">
+                <span className="kpi-title">REVENUE AT RISK</span>
+                <span className="kpi-tag kpi-tag-amber">EXPOSURE</span>
+              </div>
+              <div className="kpi-value-wrap">
+                <div className="kpi-value font-mono">{formatINR(expected_recovery.total_revenue_at_risk)}</div>
+              </div>
+              <div className="kpi-footer">
+                <span className="kpi-metric-badge kpi-badge-amber">{risk.high + risk.critical} High/Crit</span>
+                <span className="kpi-descriptor">Aggregate merchant revenue exposed</span>
+              </div>
             </div>
 
             <div className="kpi-card expected">
-              <div className="kpi-title">EXPECTED RECOVERY</div>
-              <div className="kpi-value">{formatINR(expected_recovery.total_expected_recovery)}</div>
-              <div className="kpi-subtext text-purple">
-                {expected_recovery.expected_recovery_rate_pct.toFixed(2)}% Policy EV Rate
+              <div className="kpi-corner-accent"></div>
+              <div className="kpi-header">
+                <span className="kpi-title">EXPECTED RECOVERY</span>
+                <span className="kpi-tag kpi-tag-blue">POLICY EV</span>
+              </div>
+              <div className="kpi-value-wrap">
+                <div className="kpi-value font-mono">{formatINR(expected_recovery.total_expected_recovery)}</div>
+              </div>
+              <div className="kpi-footer">
+                <span className="kpi-metric-badge kpi-badge-blue">
+                  {expected_recovery.expected_recovery_rate_pct.toFixed(2)}% EV Rate
+                </span>
+                <span className="kpi-descriptor">Governed policy expectation</span>
               </div>
             </div>
 
             <div className="kpi-card measured">
-              <div className="kpi-title">NET RECOVERED REVENUE</div>
-              <div className="kpi-value">{formatINR(measured_recovery.net_recovered_revenue)}</div>
-              <div className="kpi-subtext text-success">
-                {measured_recovery.measured_recovery_rate_pct.toFixed(2)}% Net Realized Rate
+              <div className="kpi-corner-accent"></div>
+              <div className="kpi-header">
+                <span className="kpi-title">NET RECOVERED REVENUE</span>
+                <span className="kpi-tag kpi-tag-emerald">REALIZED</span>
+              </div>
+              <div className="kpi-value-wrap">
+                <div className="kpi-value font-mono">{formatINR(measured_recovery.net_recovered_revenue)}</div>
+              </div>
+              <div className="kpi-footer">
+                <span className="kpi-metric-badge kpi-badge-emerald">
+                  {measured_recovery.measured_recovery_rate_pct.toFixed(2)}% Net Realized
+                </span>
+                <span className="kpi-descriptor">Cash reconciled & attributed</span>
               </div>
             </div>
 
             <div className="kpi-card customers">
-              <div className="kpi-title">RECOVERED CUSTOMERS</div>
-              <div className="kpi-value">{measured_recovery.recovered_customers}</div>
-              <div className="kpi-subtext text-cyan">Out of {execution.successful} Dispatches</div>
+              <div className="kpi-corner-accent"></div>
+              <div className="kpi-header">
+                <span className="kpi-title">RECOVERED CUSTOMERS</span>
+                <span className="kpi-tag kpi-tag-violet">ACCOUNTS</span>
+              </div>
+              <div className="kpi-value-wrap">
+                <div className="kpi-value font-mono">{measured_recovery.recovered_customers}</div>
+              </div>
+              <div className="kpi-footer">
+                <span className="kpi-metric-badge kpi-badge-violet">
+                  {((measured_recovery.recovered_customers / Math.max(dataset.customers_evaluated, 1)) * 100).toFixed(1)}% Conversion
+                </span>
+                <span className="kpi-descriptor">Out of {execution.successful} dispatches</span>
+              </div>
             </div>
           </section>
 
           {/* 9-STAGE RECOVERY PIPELINE VISUALIZATION */}
           <section className="pipeline-card">
-            <div className="section-title">9-STAGE REVIVE RECOVERY PIPELINE</div>
-            <div className="pipeline-flex">
-              <div className="pipeline-step">
-                <div className="pipeline-step-name">1. DETECT</div>
-                <div className="pipeline-step-val">{dataset.customers_evaluated}</div>
-                <div className="pipeline-step-desc">Evaluated</div>
+            <div className="pipeline-card-header">
+              <div className="section-title">
+                <span className="section-title-icon">⚡</span> 9-STAGE REVIVE RECOVERY PIPELINE
               </div>
-              <div className="pipeline-arrow">→</div>
-
-              <div className="pipeline-step">
-                <div className="pipeline-step-name">2. DIAGNOSE</div>
-                <div className="pipeline-step-val">{diagnosis.payment_friction}</div>
-                <div className="pipeline-step-desc">Payment Friction</div>
+              <div className="pipeline-legend">
+                <span className="legend-item"><span className="legend-dot dot-blue"></span> Active Pipeline</span>
+                <span className="legend-item"><span className="legend-dot dot-emerald"></span> Realized Outcome</span>
+                <span className="legend-item"><span className="legend-dot dot-amber"></span> Governed Control</span>
               </div>
-              <div className="pipeline-arrow">→</div>
+            </div>
 
-              <div className="pipeline-step">
-                <div className="pipeline-step-name">3. DECIDE</div>
-                <div className="pipeline-step-val">{policy.payment_recovery_actions}</div>
-                <div className="pipeline-step-desc">Actions Chosen</div>
-              </div>
-              <div className="pipeline-arrow">→</div>
-
-              <div className="pipeline-step">
-                <div className="pipeline-step-name">4. GUARD</div>
-                <div className="pipeline-step-val text-success">{policy.eligible_customers}</div>
-                <div className="pipeline-step-desc">Policy Authorized</div>
-              </div>
-              <div className="pipeline-arrow">→</div>
-
-              <div className="pipeline-step">
-                <div className="pipeline-step-name">5. EXECUTE</div>
-                <div className="pipeline-step-val">{execution.successful}</div>
-                <div className="pipeline-step-desc">Dispatched</div>
-              </div>
-              <div className="pipeline-arrow">→</div>
-
-              <div className="pipeline-step">
-                <div className="pipeline-step-name">6. PAYMENT RESULT</div>
-                <div className="pipeline-step-val text-xs text-cyan font-bold">Synthetic Observed</div>
-                <div className="pipeline-step-desc">Simulation Horizon</div>
-              </div>
-              <div className="pipeline-arrow">→</div>
-
-              <div className="pipeline-step">
-                <div className="pipeline-step-name">7. WEBHOOK</div>
-                <div className="pipeline-step-val text-xs text-muted">Not Observed</div>
-                <div className="pipeline-step-desc">Synthetic Batch</div>
-              </div>
-              <div className="pipeline-arrow">→</div>
-
-              <div className="pipeline-step">
-                <div className="pipeline-step-name">8. OUTCOME</div>
-                <div className="pipeline-step-val text-success">{measured_recovery.recovered_customers}</div>
-                <div className="pipeline-step-desc">Recovered</div>
-              </div>
-              <div className="pipeline-arrow">→</div>
-
-              <div className="pipeline-step">
-                <div className="pipeline-step-name">9. ATTRIBUTION</div>
-                <div className="pipeline-step-val font-bold text-success">
-                  {formatINR(measured_recovery.net_recovered_revenue)}
+            <div className="pipeline-flow-container">
+              <div className="pipeline-track">
+                {/* Node 1: DETECT */}
+                <div className="pipeline-node node-active">
+                  <div className="node-stage-num">01</div>
+                  <div className="node-header">
+                    <span className="node-name">DETECT</span>
+                  </div>
+                  <div className="node-value font-mono">{dataset.customers_evaluated}</div>
+                  <div className="node-desc">Evaluated</div>
+                  <div className="node-indicator"></div>
                 </div>
-                <div className="pipeline-step-desc">Net Attributed</div>
+
+                <div className="node-connector active"></div>
+
+                {/* Node 2: DIAGNOSE */}
+                <div className="pipeline-node node-active">
+                  <div className="node-stage-num">02</div>
+                  <div className="node-header">
+                    <span className="node-name">DIAGNOSE</span>
+                  </div>
+                  <div className="node-value font-mono">{diagnosis.payment_friction}</div>
+                  <div className="node-desc">Payment Friction</div>
+                  <div className="node-indicator"></div>
+                </div>
+
+                <div className="node-connector active"></div>
+
+                {/* Node 3: DECIDE */}
+                <div className="pipeline-node node-active">
+                  <div className="node-stage-num">03</div>
+                  <div className="node-header">
+                    <span className="node-name">DECIDE</span>
+                  </div>
+                  <div className="node-value font-mono">{policy.payment_recovery_actions}</div>
+                  <div className="node-desc">Recovery Actions</div>
+                  <div className="node-indicator"></div>
+                </div>
+
+                <div className="node-connector active"></div>
+
+                {/* Node 4: GUARD */}
+                <div className="pipeline-node node-guard">
+                  <div className="node-stage-num">04</div>
+                  <div className="node-header">
+                    <span className="node-name">GUARD</span>
+                  </div>
+                  <div className="node-value font-mono text-success">{policy.eligible_customers}</div>
+                  <div className="node-desc">Policy Eligible</div>
+                  <div className="node-indicator"></div>
+                </div>
+
+                <div className="node-connector active"></div>
+
+                {/* Node 5: EXECUTE */}
+                <div className="pipeline-node node-active">
+                  <div className="node-stage-num">05</div>
+                  <div className="node-header">
+                    <span className="node-name">EXECUTE</span>
+                  </div>
+                  <div className="node-value font-mono">{execution.successful}</div>
+                  <div className="node-desc">Dispatched</div>
+                  <div className="node-indicator"></div>
+                </div>
+
+                <div className="node-connector"></div>
+
+                {/* Node 6: PAYMENT RESULT */}
+                <div className="pipeline-node node-synthetic">
+                  <div className="node-stage-num">06</div>
+                  <div className="node-header">
+                    <span className="node-name">PAYMENT</span>
+                  </div>
+                  <div className="node-value font-mono text-cyan text-sm">Synthetic Observed</div>
+                  <div className="node-desc">Synthetic Batch</div>
+                  <div className="node-indicator"></div>
+                </div>
+
+                <div className="node-connector"></div>
+
+                {/* Node 7: WEBHOOK */}
+                <div className="pipeline-node node-webhook">
+                  <div className="node-stage-num">07</div>
+                  <div className="node-header">
+                    <span className="node-name">WEBHOOK</span>
+                  </div>
+                  <div className="node-value font-mono text-muted text-sm">Not Observed</div>
+                  <div className="node-desc">Synthetic Batch</div>
+                  <div className="node-indicator"></div>
+                </div>
+
+                <div className="node-connector confirmed"></div>
+
+                {/* Node 8: OUTCOME */}
+                <div className="pipeline-node node-confirmed">
+                  <div className="node-stage-num">08</div>
+                  <div className="node-header">
+                    <span className="node-name">OUTCOME</span>
+                  </div>
+                  <div className="node-value font-mono text-success">{measured_recovery.recovered_customers}</div>
+                  <div className="node-desc">Recovered</div>
+                  <div className="node-indicator"></div>
+                </div>
+
+                <div className="node-connector confirmed"></div>
+
+                {/* Node 9: ATTRIBUTION */}
+                <div className="pipeline-node node-confirmed node-final">
+                  <div className="node-stage-num">09</div>
+                  <div className="node-header">
+                    <span className="node-name">ATTRIBUTION</span>
+                  </div>
+                  <div className="node-value font-mono font-bold text-success">
+                    {formatINR(measured_recovery.net_recovered_revenue)}
+                  </div>
+                  <div className="node-desc">Net Realized</div>
+                  <div className="node-indicator"></div>
+                </div>
               </div>
             </div>
           </section>
@@ -349,7 +648,7 @@ export function App() {
                 <div className="comp-box expected">
                   <div className="comp-title">EXPECTED (POLICY EV)</div>
                   <div className="comp-amount">{formatINR(expected_recovery.total_expected_recovery)}</div>
-                  <div className="comp-rate text-purple">
+                  <div className="comp-rate text-blue">
                     {expected_recovery.expected_recovery_rate_pct.toFixed(2)}% EV Rate
                   </div>
                 </div>
@@ -500,6 +799,27 @@ export function App() {
                   <option value="ALREADY_CONVERTED">Already Converted</option>
                 </select>
 
+                <select
+                  className="filter-select"
+                  value={actionFilter}
+                  onChange={(e) => setActionFilter(e.target.value)}
+                >
+                  <option value="ALL">All Actions</option>
+                  <option value="PAYMENT_RECOVERY">Payment Recovery</option>
+                  <option value="REMINDER">Reminder</option>
+                  <option value="NO_ACTION">No Action</option>
+                </select>
+
+                <select
+                  className="filter-select"
+                  value={eligibilityFilter}
+                  onChange={(e) => setEligibilityFilter(e.target.value)}
+                >
+                  <option value="ALL">All Eligibility</option>
+                  <option value="ELIGIBLE">Eligible</option>
+                  <option value="INELIGIBLE">Ineligible</option>
+                </select>
+
                 <select className="filter-select" value={execFilter} onChange={(e) => setExecFilter(e.target.value)}>
                   <option value="ALL">All Executions</option>
                   <option value="EXECUTED">Executed</option>
@@ -518,6 +838,16 @@ export function App() {
                   <option value="NOT_RECOVERED">Not Recovered</option>
                   <option value="ALREADY_CONVERTED">Already Converted</option>
                   <option value="NO_OBSERVABLE_OUTCOME">No Observable Outcome</option>
+                </select>
+
+                <select
+                  className="filter-select"
+                  value={attributionFilter}
+                  onChange={(e) => setAttributionFilter(e.target.value)}
+                >
+                  <option value="ALL">All Attribution</option>
+                  <option value="DIRECTLY_OBSERVED">Directly Observed</option>
+                  <option value="UNATTRIBUTED">Unattributed</option>
                 </select>
               </div>
             </div>
@@ -598,8 +928,8 @@ export function App() {
               {/* BENCHMARK HEADER BANNER */}
               <div className="evidence-header-card">
                 <div>
-                  <div className="drawer-tag">AUTHORITATIVE COMMITTED EVIDENCE</div>
-                  <h2 className="evidence-title">PHASE B: 10,000 PAIRED UNITS CONTROLLED BENCHMARK</h2>
+                  <div className="drawer-tag">PHASE B · 10,000-PAIR CONTROLLED BENCHMARK</div>
+                  <h2 className="evidence-title">CONTROLLED BENCHMARK</h2>
                   <div className="evidence-meta text-secondary text-xs mt-1">
                     Experiment: <span className="text-white font-mono">{benchmark.metadata?.experiment_id}</span> •
                     Seed: <span className="text-white font-bold">{benchmark.metadata?.seed}</span> • Timestamp:{" "}
@@ -797,8 +1127,8 @@ export function App() {
             <div className="card">
               <div className="evidence-header-card">
                 <div>
-                  <div className="drawer-tag">PHASE A PROVEN EXTERNAL INFRASTRUCTURE</div>
-                  <h2 className="evidence-title">REAL RAZORPAY TEST MODE RECOVERY PROOF</h2>
+                  <div className="drawer-tag">PHASE A · RAZORPAY TEST MODE RECOVERY PROOF</div>
+                  <h2 className="evidence-title">RAZORPAY PAYMENT PROOF</h2>
                   <div className="evidence-meta text-secondary text-xs mt-1">
                     Environment: <span className="text-white font-bold">{razorpayProof.environment.toUpperCase()}</span> •
                     Status: <span className="text-success font-bold">{razorpayProof.status}</span> • Provenance:{" "}
@@ -909,8 +1239,8 @@ export function App() {
               {/* STATUS & PROVENANCE HEADER */}
               <div className="gemini-header">
                 <div>
-                  <div className="drawer-tag">REVIVE PHASE D v3 — SELECTIVE AI DIAGNOSIS INTELLIGENCE</div>
-                  <h2 className="section-title text-xl mt-1">Selective Real Gemini Diagnosis Demonstration</h2>
+                  <div className="drawer-tag">PHASE D · REAL GEMINI AI EVALUATION & EVIDENCE</div>
+                  <h2 className="evidence-title">AI EVALUATION & EVIDENCE</h2>
                   <div className="provenance-note mt-1 text-sm text-secondary">
                     Demonstration Case: <strong>Controlled Ambiguous Journey ({geminiData.demonstration_case.customer_id})</strong>
                     <span className="provenance-alert"> (Selective AI Review — Gemini invoked ONLY on multi-signal ambiguity)</span>
@@ -930,6 +1260,39 @@ export function App() {
                   >
                     {geminiData.status || geminiData.demonstration_case.gemini_response.status}
                   </span>
+                </div>
+              </div>
+
+              {/* GOVERNED AI PIPELINE SEQUENCE */}
+              <div className="ai-governance-sequence mt-3">
+                <div className="seq-node">
+                  <span className="seq-step-num">01</span>
+                  <span className="seq-step-name">AMBIGUITY TRIGGER</span>
+                  <span className="seq-step-desc">Multi-signal Ambiguity</span>
+                </div>
+                <div className="seq-arrow">→</div>
+                <div className="seq-node seq-node-ai">
+                  <span className="seq-step-num">02</span>
+                  <span className="seq-step-name">GEMINI DIAGNOSIS</span>
+                  <span className="seq-step-desc">Advisory Intelligence</span>
+                </div>
+                <div className="seq-arrow">→</div>
+                <div className="seq-node seq-node-guard">
+                  <span className="seq-step-num">03</span>
+                  <span className="seq-step-name">GOVERNANCE GATE</span>
+                  <span className="seq-step-desc">Safety & Containment</span>
+                </div>
+                <div className="seq-arrow">→</div>
+                <div className="seq-node seq-node-policy">
+                  <span className="seq-step-num">04</span>
+                  <span className="seq-step-name">DETERMINISTIC POLICY</span>
+                  <span className="seq-step-desc">Execution Authority</span>
+                </div>
+                <div className="seq-arrow">→</div>
+                <div className="seq-node seq-node-result">
+                  <span className="seq-step-num">05</span>
+                  <span className="seq-step-name">GOVERNED ACTION</span>
+                  <span className="seq-step-desc">Authorized Output</span>
                 </div>
               </div>
 
@@ -1072,6 +1435,17 @@ export function App() {
                         ? `${(geminiData.demonstration_case.gemini_response.confidence * 100).toFixed(0)}%`
                         : "N/A"}
                     </div>
+                    {geminiData.demonstration_case.gemini_response.confidence !== null &&
+                    geminiData.demonstration_case.gemini_response.confidence !== undefined && (
+                      <div className="confidence-meter-track mt-1">
+                        <div
+                          className="confidence-meter-fill"
+                          style={{
+                            width: `${Math.min(Math.max(geminiData.demonstration_case.gemini_response.confidence * 100, 0), 100)}%`,
+                          }}
+                        ></div>
+                      </div>
+                    )}
                   </div>
                   <div className="detail-box">
                     <div className="detail-label">GEMINI ACTIONABILITY</div>
@@ -1627,8 +2001,8 @@ export function App() {
             <>
               <div className="evidence-header-card">
                 <div>
-                  <div className="drawer-tag">BOUNDED AI SAFETY & SYSTEM RESTRAINT</div>
-                  <h2 className="evidence-title">EXCEPTIONS & GOVERNED NON-ACTIONS ("WHY REVIVE DIDN'T ACT")</h2>
+                  <div className="drawer-tag">BOUNDED AI SAFETY & GOVERNED STOPS</div>
+                  <h2 className="evidence-title">SAFETY & EXCEPTIONS ("WHY REVIVE DIDN'T ACT")</h2>
                   <div className="evidence-meta text-secondary text-xs mt-1">
                     Total Governed Stops/Exceptions:{" "}
                     <span className="text-white font-bold">{exceptionsData.total_exceptions}</span> • Retryable:{" "}
@@ -1711,8 +2085,8 @@ export function App() {
         <section className="failure-view">
           <div className="evidence-header-card">
             <div>
-              <div className="drawer-tag">RUNTIME RESILIENCE & ERROR HANDLING</div>
-              <h2 className="evidence-title">CONTROLLED FAILURE & GRACEFUL RECOVERY DEMONSTRATION</h2>
+              <div className="drawer-tag">DETERMINISTIC FAILURE SCENARIOS</div>
+              <h2 className="evidence-title">FAILURE SCENARIOS & GRACEFUL RECOVERY</h2>
               <div className="evidence-meta text-secondary text-xs mt-1">
                 CONTROLLED DETERMINISTIC FAILURE FIXTURE backed by real ExecutionEngine failure semantics (not a live customer decision).
               </div>
@@ -1791,7 +2165,8 @@ export function App() {
       {activeTab === "methodology" && (
         <section className="methodology-view">
           <div className="card">
-            <div className="section-title">EVALUATION METHODOLOGY & TRANSPARENT DISCLOSURES</div>
+            <div className="drawer-tag">SYSTEM GOVERNANCE & METHODOLOGY</div>
+            <div className="section-title mt-1">METHODOLOGY & LIMITS</div>
 
             <div className="disclosure-banner mt-2 mb-3">
               <strong>Critical Disclosure:</strong> Phase B is a deterministic synthetic evaluation. Ground-truth
@@ -1841,7 +2216,11 @@ export function App() {
       )}
 
       {/* 4. CUSTOMER DETAIL DRAWER */}
-      <CustomerDrawer customer={selectedCustomer} onClose={() => setSelectedCustomer(null)} />
+      <CustomerDrawer
+        customer={selectedCustomer}
+        controls={controls}
+        onClose={() => setSelectedCustomer(null)}
+      />
     </div>
   );
 }
